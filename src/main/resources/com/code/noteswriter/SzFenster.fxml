@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.Pane?>
+<?import javafx.scene.control.Label?>
+
+<AnchorPane xmlns="http://javafx.com/javafx/16" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.code.noteswriter.Controller">
+    <HBox alignment="CENTER" AnchorPane.topAnchor="10.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0">
+        <Label fx:id="pageIndicator" text="Linke Seite"/>
+    </HBox>
+
+    <HBox AnchorPane.topAnchor="50.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.bottomAnchor="0.0">
+
+        <!-- Linker Bereich: Bild + Grids -->
+        <StackPane fx:id="printArea">
+            <ImageView fitHeight="902.0" fitWidth="1462.0" pickOnBounds="true" preserveRatio="true">
+                <Image url="@Bilder/UntergrundOhne.jpg"/>
+            </ImageView>
+            <Pane>
+                <GridPane fx:id="Gridpane1" layoutX="24.0" layoutY="110.0" vgap="3"/>
+                <GridPane fx:id="Gridpane2" layoutX="655.0" layoutY="110.0" vgap="3"/>
+            </Pane>
+        </StackPane>
+
+        <!-- Rechter Bereich: Buttons -->
+        <VBox spacing="20">
+            <HBox spacing="10">
+                <VBox alignment="CENTER" spacing="10">
+                    <Button fx:id="Seitenwechsel" text="Seitenwechsel" onAction="#handleSwitchGrid"/>
+                    <Button fx:id="Speichern" text="Speichern" onAction="#handleSaveToFile"/>
+                    <Button fx:id="Laden" text="Laden" onAction="#handleLoadChoice"/>
+                    <Button fx:id="printGridPaneButton" onAction="#handlePrintGridPaneAction" text="Drucken (GridPane)"/>
+                </VBox>
+                <VBox alignment="CENTER" spacing="10">
+                    <Button fx:id="W_Offen" onAction="#handleWOffenAction" text="w_Offen"/>
+                    <Button fx:id="deleteLastNoteButton" onAction="#handleDeleteLastNoteAction" text="Letzte Note löschen"/>
+                    <Button fx:id="deleteAllNotesButton" onAction="#handleDeleteAllNotesAction" text="Alle Noten löschen"/>
+                </VBox>
+            </HBox>
+            <HBox spacing="10">
+                <VBox spacing="5">
+                    <Button fx:id="D_Oktav" text="D_Oktav" onAction="#handleNoteAction"/>
+                    <Button fx:id="Dis_Es_Oktav" text="Dis_Es_Oktav" onAction="#handleNoteAction"/>
+                    <Button fx:id="E_Oktav" text="E_Oktav" onAction="#handleNoteAction"/>
+                    <Button fx:id="F_Oktav" text="F_Oktav" onAction="#handleNoteAction"/>
+                </VBox>
+                <!-- Spalte 2 -->
+                <VBox spacing="5">
+                    <Button fx:id="Cis_Des" text="Cis_Des" onAction="#handleNoteAction"/>
+                    <Button fx:id="D" text="D" onAction="#handleNoteAction"/>
+                    <Button fx:id="Dis_Es" text="Dis_Es" onAction="#handleNoteAction"/>
+                    <Button fx:id="E" text="E" onAction="#handleNoteAction"/>
+                </VBox>
+                <!-- Spalte 3 -->
+                <VBox spacing="5">
+                    <Button fx:id="F" text="F" onAction="#handleNoteAction"/>
+                    <Button fx:id="F_1" text="F_1" onAction="#handleNoteAction"/>
+                    <Button fx:id="Fis_Ges" text="Fis_Ges" onAction="#handleNoteAction"/>
+                    <Button fx:id="G" text="G" onAction="#handleNoteAction"/>
+                </VBox>
+                <!-- Spalte 4 -->
+                <VBox spacing="5">
+                    <Button fx:id="Gis_As" text="Gis_As" onAction="#handleNoteAction"/>
+                    <Button fx:id="A" text="A" onAction="#handleNoteAction"/>
+                    <Button fx:id="Ais_B" text="Ais_B" onAction="#handleNoteAction"/>
+                    <Button fx:id="H" text="H" onAction="#handleNoteAction"/>
+                </VBox>
+                <!-- Spalte 5 -->
+                <VBox spacing="5">
+                    <Button fx:id="C1" text="C1" onAction="#handleNoteAction"/>
+                    <Button fx:id="Cis_Des1" text="Cis_Des1" onAction="#handleNoteAction"/>
+                    <Button fx:id="D1" text="D1" onAction="#handleNoteAction"/>
+                    <Button fx:id="Dis_Es1" text="Dis_Es1" onAction="#handleNoteAction"/>
+                </VBox>
+                <!-- Spalte 6 -->
+                <VBox spacing="5">
+                    <Button fx:id="E1" text="E1" onAction="#handleNoteAction"/>
+                    <Button fx:id="Fis_Ges1" text="Fis_Ges1" onAction="#handleNoteAction"/>
+                    <Button fx:id="G1" text="G1" onAction="#handleNoteAction"/>
+                    <Button fx:id="Gis_As1" text="Gis_As1" onAction="#handleNoteAction"/>
+                    <Button fx:id="A1" text="A1" onAction="#handleNoteAction"/>
+                </VBox>
+            </HBox>
+
+        </VBox>
+    </HBox>
+</AnchorPane>
