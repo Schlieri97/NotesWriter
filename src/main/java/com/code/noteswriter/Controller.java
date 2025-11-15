@@ -254,18 +254,31 @@ public class Controller {
 
     @FXML
     private void handleDeleteAllNotesAction(ActionEvent event) {
-        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.CONFIRMATION);
+        boolean isLeft = (activeGridPane == Gridpane1);
+        String pageName = isLeft ? "Linke Seite" : "Rechte Seite";
+
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle("Alle Noten löschen");
         alert.setHeaderText("Bist du sicher, dass du alle Noten löschen möchtest?");
-        alert.setContentText("Dieser Vorgang kann nicht rückgängig gemacht werden.");
+        alert.setContentText("Es werden alle Noten auf der folgenden Seite gelöscht: " + pageName + "\nDieser Vorgang kann nicht rückgängig gemacht werden.");
 
-        Optional<javafx.scene.control.ButtonType> result = alert.showAndWait();
-        if (result.isPresent() && result.get() == javafx.scene.control.ButtonType.OK) {
-            activeGridPane.getChildren().clear(); // Entferne alle Nodes aus der GridPane
-
-            // Setze Offsets zurück
-            rowOffset = 0;
-            columnOffset = 0;
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            if (activeGridPane == Gridpane1) {
+                Gridpane1.getChildren().clear();
+                notesSeite1.clear();
+                rowOffset1 = 1;
+                columnOffset1 = 0;
+                rowOffset = rowOffset1;
+                columnOffset = columnOffset1;
+            } else {
+                Gridpane2.getChildren().clear();
+                notesSeite2.clear();
+                rowOffset2 = 1;
+                columnOffset2 = 0;
+                rowOffset = rowOffset2;
+                columnOffset = columnOffset2;
+            }
         }
     }
 
@@ -582,32 +595,55 @@ public class Controller {
 
         if (file != null) {
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
-                // Seite 1
                 for (Node node : Gridpane1.getChildren()) {
                     if (node instanceof Ellipse ellipse) {
                         Object data = ellipse.getUserData();
-                        if (data != null) { // 👉 nur die "erste Ellipse" hat UserData
+                        if (data != null) {
                             writer.write("Seite1;" + data.toString());
                             writer.newLine();
                         }
                     }
-                }                // Seite 2
-                for (Node node : Gridpane2.getChildren()) {
-                    if (node instanceof Ellipse ellipse) {
-                        Object data = ellipse.getUserData();
-                        if (data != null) { // 👉 nur die "erste Ellipse" hat UserData
-                            writer.write("Seite2;" + data.toString());
-                            writer.newLine();
+                    else if (node instanceof StackPane sp) {
+                        for (Node child : sp.getChildren()) {
+                            if (child instanceof Ellipse childEllipse) {
+                                Object data = childEllipse.getUserData();
+                                if (data != null) {
+                                    writer.write("Seite1;" + data.toString());
+                                    writer.newLine();
+                                }
+                                break;
+                            }
                         }
                     }
                 }
+
+                for (Node node : Gridpane2.getChildren()) {
+                    if (node instanceof Ellipse ellipse) {
+                        Object data = ellipse.getUserData();
+                        if (data != null) {
+                            writer.write("Seite2;" + data.toString());
+                            writer.newLine();
+                        }
+                    } else if (node instanceof StackPane sp) {
+                        for (Node child : sp.getChildren()) {
+                            if (child instanceof Ellipse childEllipse) {
+                                Object data = childEllipse.getUserData();
+                                if (data != null) {
+                                    writer.write("Seite2;" + data.toString());
+                                    writer.newLine();
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 System.out.println("Datei gespeichert: " + file.getAbsolutePath());
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
     }
-
 
     @FXML
     private void handleLoadChoice(ActionEvent event) {
@@ -678,6 +714,12 @@ public class Controller {
                     }
                 }
                 System.out.println("Datei geladen: " + file.getAbsolutePath());
+
+                activeGridPane = Gridpane1;
+                rowOffset = rowOffset1;
+                columnOffset = columnOffset1;
+                pageIndicator.setText("Linke Seite");
+                pageIndicator.setTextFill(Color.BLUE);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -723,6 +765,12 @@ public class Controller {
                     }
                 }
                 System.out.println("Datei hinzugefügt: " + file.getAbsolutePath());
+
+                activeGridPane = Gridpane1;
+                rowOffset = rowOffset1;
+                columnOffset = columnOffset1;
+                pageIndicator.setText("Linke Seite");
+                pageIndicator.setTextFill(Color.BLUE);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -793,5 +841,4 @@ public class Controller {
             }
         }
     }
-
 }

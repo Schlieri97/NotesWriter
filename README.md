@@ -10,7 +10,7 @@ _The program allows you to draw, save, load, and print note pages with fingering
 
 ## 🚀 Funktionen / _Features_
 
-- 🎶 **Interaktive Notenanzeige:** / _Interactive Note Display:_
+- 🎶 **Interaktive Notenanzeige:** / _**Interactive Note Display:**_
   - Darstellung der Griffe für verschiedene Töne (inklusive Oktav-Noten).
   - _Shows fingering diagrams for different tones (including octave notes)._
 
@@ -19,11 +19,11 @@ _The program allows you to draw, save, load, and print note pages with fingering
   - _Switch between two separate note pages within the program._
 
 - 💾 **Speichern & Laden:** / _**Save & Load:**_
-  Exportiere deine Noten in eine Textdatei und lade sie später wieder.  
+  - Exportiere deine Noten in eine Textdatei und lade sie später wieder.  
   - „Alle Noten überladen“ → ersetzt die vorhandenen Noten
   - „Noten hinzufügen“ → fügt neue Noten an die bestehenden an
     
-  _Export your notes to a text file and load them later._
+  - _Export your notes to a text file and load them later._
   - _“Overwrite all notes” → replaces existing ones_
   - _“Add notes” → appends new notes to the existing list_
 
