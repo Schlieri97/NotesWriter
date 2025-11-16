@@ -206,8 +206,6 @@ public class Controller {
 
             rowOffset = rowOffset2;
             columnOffset = columnOffset2;
-            pageIndicator.setText("Rechte Seite");
-            pageIndicator.setTextFill(Color.RED);
         } else {
             rowOffset2 = rowOffset;
             columnOffset2 = columnOffset;
@@ -216,9 +214,24 @@ public class Controller {
 
             rowOffset = rowOffset1;
             columnOffset = columnOffset1;
+        }
+        updatePageIndicatorPosition();
+    }
+
+    private void updatePageIndicatorPosition() {
+        if (activeGridPane == Gridpane1) {
             pageIndicator.setText("Linke Seite");
             pageIndicator.setTextFill(Color.BLUE);
+            pageIndicator.setLayoutX(300);
+            pageIndicator.setLayoutY(5);
+        } else {
+            pageIndicator.setText("Rechte Seite");
+            pageIndicator.setTextFill(Color.RED);
+            pageIndicator.setLayoutX(930);
+            pageIndicator.setLayoutY(5);
         }
+
+        pageIndicator.toFront();
     }
 
     @FXML
@@ -491,7 +504,12 @@ public class Controller {
             return;
         }
 
-        PageLayout layout = printer.createPageLayout(Paper.A4, PageOrientation.LANDSCAPE, Printer.MarginType.DEFAULT);
+        PageLayout layout = printer.createPageLayout(
+                Paper.A4,
+                PageOrientation.LANDSCAPE,
+                0, 0, 0, 0
+        );
+
         javafx.print.PrinterJob job = javafx.print.PrinterJob.createPrinterJob();
 
         if (job != null && job.showPrintDialog(printGridPaneButton.getScene().getWindow())) {
@@ -519,74 +537,7 @@ public class Controller {
             columnOffset2 = columnOffset;
         }
     }
-//FUNKTIONIERENDER FÜR EINER SEITE
-//    @FXML
-//    private void handlePrintGridPaneAction(ActionEvent event) {
-//        // 📌 Merke dir vorherigen Zustand
-//        int previousRowOffset = rowOffset;
-//        int previousColumnOffset = columnOffset;
-//
-//        fillRemainingRowsWithCisDes();
-//
-//        WritableImage snapshot = printArea.snapshot(null, null);
-//
-//        Printer printer = Printer.getDefaultPrinter();
-//        if (printer == null) {
-//            System.out.println("Kein Drucker gefunden.");
-//            return;
-//        }
-//
-//        PageLayout pageLayout = printer.createPageLayout(Paper.A4, PageOrientation.LANDSCAPE, Printer.MarginType.DEFAULT);
-//        javafx.print.PrinterJob job = javafx.print.PrinterJob.createPrinterJob();
-//
-//        if (job != null && job.showPrintDialog(printGridPaneButton.getScene().getWindow())) {
-//            ImageView printView = new ImageView(snapshot);
-//            printView.setFitWidth(pageLayout.getPrintableWidth());
-//            printView.setFitHeight(pageLayout.getPrintableHeight());
-//            printView.setPreserveRatio(true);
-//
-//            boolean success = job.printPage(pageLayout, printView);
-//            if (success) {
-//                job.endJob();
-//
-//                // 🧹 Entferne Cis/Des-Noten
-//                activeGridPane.getChildren().removeIf(node ->
-//                        node instanceof javafx.scene.shape.Ellipse &&
-//                                "Cis_Des".equals(node.getUserData())
-//                );
-//
-//                // 🔄 Setze Offset-Zähler zurück
-//                rowOffset = previousRowOffset;
-//                columnOffset = previousColumnOffset;
-//            }
-//        }
-//    }
 
-    //TODO Noten werden nicht überschrieben.. es sollen immer nur alle Gridpane noten in der gespeicherten Datei sein
-//    @FXML
-//    private void handleSaveToFile(ActionEvent event) {
-//        FileChooser fileChooser = new FileChooser();
-//        fileChooser.setTitle("Speichern unter");
-//        File file = fileChooser.showSaveDialog(printGridPaneButton.getScene().getWindow());
-//
-//        if (file != null) {
-//            try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
-//                // Seite 1 speichern
-//                for (String note : notesSeite1) {
-//                    writer.write("Seite1;" + note);
-//                    writer.newLine();
-//                }
-//                // Seite 2 speichern
-//                for (String note : notesSeite2) {
-//                    writer.write("Seite2;" + note);
-//                    writer.newLine();
-//                }
-//                System.out.println("Datei gespeichert: " + file.getAbsolutePath());
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//        }
-//    }
     @FXML
     private void handleSaveToFile(ActionEvent event) {
         FileChooser fileChooser = new FileChooser();
@@ -677,7 +628,6 @@ public class Controller {
         File file = fileChooser.showOpenDialog(printGridPaneButton.getScene().getWindow());
 
         if (file != null) {
-            // 🧹 Vorherige Noten und Grids löschen
             Gridpane1.getChildren().clear();
             Gridpane2.getChildren().clear();
             notesSeite1.clear();
@@ -720,6 +670,7 @@ public class Controller {
                 columnOffset = columnOffset1;
                 pageIndicator.setText("Linke Seite");
                 pageIndicator.setTextFill(Color.BLUE);
+                updatePageIndicatorPosition();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -744,12 +695,11 @@ public class Controller {
 
                         if (seite.equals("Seite1")) {
                             activeGridPane = Gridpane1;
-                            rowOffset = rowOffset1;   // ⬅️ setze globale nur TEMPORÄR
+                            rowOffset = rowOffset1;
                             columnOffset = columnOffset1;
 
                             drawGriffOnGrid(griff, noteName);
 
-                            // ⬅️ danach zurückspeichern
                             rowOffset1 = rowOffset;
                             columnOffset1 = columnOffset;
                         } else if (seite.equals("Seite2")) {
@@ -771,12 +721,12 @@ public class Controller {
                 columnOffset = columnOffset1;
                 pageIndicator.setText("Linke Seite");
                 pageIndicator.setTextFill(Color.BLUE);
+                updatePageIndicatorPosition();
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
     }
-
 
     private void addIconsToNoteButtons() {
         Map<Button, String> mapping = Map.ofEntries(

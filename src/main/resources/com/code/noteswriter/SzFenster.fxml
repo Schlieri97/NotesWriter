@@ -13,10 +13,6 @@
 <?import javafx.scene.control.Label?>
 
 <AnchorPane xmlns="http://javafx.com/javafx/16" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.code.noteswriter.Controller">
-    <HBox alignment="CENTER" AnchorPane.topAnchor="10.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0">
-        <Label fx:id="pageIndicator" text="Linke Seite"/>
-    </HBox>
-
     <HBox AnchorPane.topAnchor="50.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.bottomAnchor="0.0">
 
         <!-- Linker Bereich: Bild + Grids -->
@@ -92,4 +88,9 @@
 
         </VBox>
     </HBox>
+    <Label fx:id="pageIndicator"
+           text="Linke Seite"
+           layoutX="300"
+           layoutY="5"
+           style="-fx-font-size: 32px; -fx-text-fill: black; -fx-font-weight: bold;" />
 </AnchorPane>
