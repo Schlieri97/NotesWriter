@@ -36,6 +36,7 @@ public class Model {
         griffTabellen.put("Dis_Es1", new boolean[] {false, true, true, false, true, true, false});
         griffTabellen.put("E1", new boolean[] {true, true, false, false, true, true, false});
         griffTabellen.put("Fis_Ges1", new boolean[] {true, false, false, true, false, false, true});
+        griffTabellen.put("F_hoch", new boolean[] {true, false, false, true, false, false, true});
         griffTabellen.put("G1", new boolean[] {true, false, true, false, false, false, true});
         griffTabellen.put("Gis_As1", new boolean[] {false, false, true, false, false, true, false});
         griffTabellen.put("A1", new boolean[] {false, true, true, true, true, false, true});

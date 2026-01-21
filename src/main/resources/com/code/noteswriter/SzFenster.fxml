@@ -80,6 +80,7 @@
                 <VBox spacing="5">
                     <Button fx:id="E1" text="E1" onAction="#handleNoteAction"/>
                     <Button fx:id="Fis_Ges1" text="Fis_Ges1" onAction="#handleNoteAction"/>
+                    <Button fx:id="F_hoch" text="F_hoch" onAction="#handleNoteAction"/>
                     <Button fx:id="G1" text="G1" onAction="#handleNoteAction"/>
                     <Button fx:id="Gis_As1" text="Gis_As1" onAction="#handleNoteAction"/>
                     <Button fx:id="A1" text="A1" onAction="#handleNoteAction"/>

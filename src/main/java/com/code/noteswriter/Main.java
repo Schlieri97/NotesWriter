@@ -57,6 +57,9 @@ public class Main extends Application {
 
         // Setup and show the stage
         primaryStage.setTitle("Sz-Notenschreiber");
+//        primaryStage.setMinWidth(1200);
+//        primaryStage.setMinHeight(800);
+
         primaryStage.setScene(new Scene(root));
         primaryStage.show();
     }

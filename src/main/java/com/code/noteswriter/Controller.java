@@ -36,14 +36,15 @@ public class Controller {
     private final List<String> notesSeite2 = new ArrayList<>();
     @FXML
     public Button D_Oktav, Dis_Es_Oktav, E_Oktav, F_Oktav, Cis_Des, D, Dis_Es, E,
-            F, F_1, Fis_Ges, G, Gis_As, A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1, Fis_Ges1, G1, Gis_As1, A1,
+            F, F_1, Fis_Ges, G, Gis_As, A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1, Fis_Ges1, F_hoch, G1, Gis_As1, A1,
             Seitenwechsel, Speichern, Laden, printGridPaneButton,  W_Offen, deleteLastNoteButton, deleteAllNotesButton;
 
     @FXML
     public GridPane Gridpane1;
     @FXML
     public GridPane Gridpane2;
-
+//    @FXML
+//    private ImageView backgroundImage;
     private GridPane activeGridPane;
     private int rowOffset1 = 1;
     private int columnOffset1 = 0;
@@ -56,6 +57,8 @@ public class Controller {
 
     @FXML
     public void initialize() {
+//        backgroundImage.fitWidthProperty().bind(printArea.widthProperty());
+//        backgroundImage.fitHeightProperty().bind(printArea.heightProperty());
         styleButtonsNotes(D_Oktav);
         styleButtonsNotes(Dis_Es_Oktav);
         styleButtonsNotes(E_Oktav);
@@ -78,6 +81,7 @@ public class Controller {
         styleButtonsNotes(Dis_Es1);
         styleButtonsNotes(E1);
         styleButtonsNotes(Fis_Ges1);
+        styleButtonsNotes(F_hoch);
         styleButtonsNotes(G1);
         styleButtonsNotes(Gis_As1);
         styleButtonsNotes(A1);
