@@ -12,9 +12,12 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
+import javafx.scene.input.MouseButton;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.scene.shape.Ellipse;
+import javafx.scene.shape.Line;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
@@ -35,34 +38,39 @@ public class Controller {
     private final List<String> notesSeite1 = new ArrayList<>();
     private final List<String> notesSeite2 = new ArrayList<>();
     @FXML
-    public Button D_Oktav, Dis_Es_Oktav, E_Oktav, F_Oktav, Cis_Des, D, Dis_Es, E,
-            F, F_1, Fis_Ges, G, Gis_As, A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1, Fis_Ges1, F_hoch, G1, Gis_As1, A1,
+    public Button Cis_Des, D, Dis_Es, E,
+            F, F_1, Fis_Ges, G, Gis_As, A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1, Fis_Ges1, F1, G1, Gis_As1, A1,
             Seitenwechsel, Speichern, Laden, printGridPaneButton,  W_Offen, deleteLastNoteButton, deleteAllNotesButton;
 
     @FXML
     public GridPane Gridpane1;
     @FXML
     public GridPane Gridpane2;
-//    @FXML
-//    private ImageView backgroundImage;
     private GridPane activeGridPane;
     private int rowOffset1 = 1;
     private int columnOffset1 = 0;
     private int rowOffset2 = 1;
     private int columnOffset2 = 0;
+    private ContextMenu activeContextMenu;
     public void setModel(Model model) {
         this.model = model;
         this.activeGridPane = Gridpane1;
     }
 
+    private static final Set<String> NO_OKTAV_NOTES = Set.of(
+            "Cis_Des",
+            "Dis_Es1",
+            "E1",
+            "Fis_Ges1",
+            "F1",
+            "G1",
+            "Gis_As1",
+            "A1"
+    );
+
     @FXML
     public void initialize() {
-//        backgroundImage.fitWidthProperty().bind(printArea.widthProperty());
-//        backgroundImage.fitHeightProperty().bind(printArea.heightProperty());
-        styleButtonsNotes(D_Oktav);
-        styleButtonsNotes(Dis_Es_Oktav);
-        styleButtonsNotes(E_Oktav);
-        styleButtonsNotes(F_Oktav);
+        setupAllNoteButtons();
         styleButtonsNotes(Cis_Des);
         styleButtonsNotes(D);
         styleButtonsNotes(Dis_Es);
@@ -81,7 +89,7 @@ public class Controller {
         styleButtonsNotes(Dis_Es1);
         styleButtonsNotes(E1);
         styleButtonsNotes(Fis_Ges1);
-        styleButtonsNotes(F_hoch);
+        styleButtonsNotes(F1);
         styleButtonsNotes(G1);
         styleButtonsNotes(Gis_As1);
         styleButtonsNotes(A1);
@@ -94,6 +102,147 @@ public class Controller {
         styleButtonsOtherButtons(deleteAllNotesButton);
         pageIndicator.setTextFill(Color.BLUE);
         addIconsToNoteButtons();
+    }
+
+    private void setupAllNoteButtons() {
+        List<Button> noteButtons = List.of(
+                Cis_Des, D, Dis_Es, E, F, F_1, Fis_Ges, G, Gis_As,
+                A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1,
+                Fis_Ges1, F1, G1, Gis_As1, A1
+        );
+
+        for (Button btn : noteButtons) {
+            setupNoteButton(btn);
+        }
+    }
+    private void setupNoteButton(Button button) {
+
+        button.setOnMouseClicked(event -> {
+
+            String noteName = button.getText();
+
+            if (event.getButton() == MouseButton.PRIMARY) {
+                addNote(noteName, NoteModifier.NORMAL);
+            }
+
+            else if (event.getButton() == MouseButton.SECONDARY) {
+                showNoteContextMenu(button, noteName,
+                        event.getScreenX(), event.getScreenY());
+            }
+        });
+    }
+
+    private void showNoteContextMenu(Button source, String baseNote, double x, double y) {
+        if (activeContextMenu != null) {
+            activeContextMenu.hide();
+        }
+
+        ContextMenu menu = new ContextMenu();
+        activeContextMenu = menu;
+
+        boolean allowOktav = !NO_OKTAV_NOTES.contains(baseNote);
+
+        MenuItem lang = new MenuItem("Lang (-)");
+        MenuItem kurz = new MenuItem("Kurz (•)");
+        MenuItem feste = new MenuItem("Feste (f)");
+
+        lang.setOnAction(e -> addNote(baseNote, NoteModifier.LANG));
+        kurz.setOnAction(e -> addNote(baseNote, NoteModifier.KURZ));
+        feste.setOnAction(e -> addNote(baseNote, NoteModifier.FESTE));
+        menu.getItems().addAll(lang, kurz, feste);
+        if (allowOktav) {
+            MenuItem oktav = new MenuItem("Oktav (x)");
+            MenuItem oktavLang = new MenuItem("Oktav + Lang (x + -)");
+            MenuItem oktavKurz = new MenuItem("Oktav + Kurz (x + •)");
+
+            oktavLang.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV_LANG));
+            oktavKurz.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV_KURZ));
+
+            oktav.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV));
+            oktavLang.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV_LANG));
+            oktavKurz.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV_KURZ));
+
+
+            menu.getItems().addAll(
+                    oktav,
+                    new SeparatorMenuItem(),
+                    oktavLang,
+                    oktavKurz
+            );
+        }
+
+        menu.setOnHidden(e -> activeContextMenu = null);
+
+        menu.show(source, x, y);
+    }
+
+
+    private void addModifierVisual(StackPane container, NoteModifier modifier) {
+
+        switch (modifier) {
+
+            case OKTAV -> addX(container);
+
+            case LANG -> addLine(container, -8);
+
+            case KURZ -> addDot(container, -8);
+
+            case FESTE -> addText(container, "f", -14);
+
+            case OKTAV_LANG -> {
+                addX(container);
+                addLine(container, -3);
+            }
+
+            case OKTAV_KURZ -> {
+                addX(container);
+                addDot(container, -4);
+            }
+
+            default -> {}
+        }
+    }
+
+    private void addX(StackPane container) {
+        Text x = new Text("x");
+        x.setFont(Font.font("Arial", FontWeight.BOLD, 15));
+        StackPane.setAlignment(x, Pos.TOP_CENTER);
+        StackPane.setMargin(x, new Insets(-18, 0, 0, 0));
+        container.getChildren().add(x);
+    }
+
+    private void addLine(StackPane container, int offsetY) {
+        Line line = new Line(-3.5, 0, 3.5, 0);
+        line.setStrokeWidth(1.5);
+        StackPane.setAlignment(line, Pos.TOP_CENTER);
+        StackPane.setMargin(line, new Insets(offsetY, 0, 0, 0));
+        container.getChildren().add(line);
+    }
+
+    private void addDot(StackPane container, int offsetY) {
+        Circle dot = new Circle(1.8, Color.BLACK);
+        StackPane.setAlignment(dot, Pos.TOP_CENTER);
+        StackPane.setMargin(dot, new Insets(offsetY, 0, 0, 0));
+        container.getChildren().add(dot);
+    }
+
+    private void addText(StackPane container, String text, int offsetY) {
+        Text t = new Text(text);
+        t.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+        StackPane.setAlignment(t, Pos.TOP_CENTER);
+        StackPane.setMargin(t, new Insets(offsetY, 0, 0, 0));
+        container.getChildren().add(t);
+    }
+
+    private void addNote(String baseNote, NoteModifier modifier) {
+
+        String finalNoteName = baseNote;
+        if (modifier == NoteModifier.OKTAV) {
+            finalNoteName = baseNote + "_Oktav";
+        }
+
+        boolean[] griff = model.getGriff(finalNoteName);
+        drawGriffOnGrid(griff, finalNoteName, modifier);
     }
 
     private void styleButtonsOtherButtons(Button button) {
@@ -138,66 +287,6 @@ public class Controller {
         pageIndicator.setBackground(new Background(
                 new BackgroundFill(Color.LIGHTGRAY, new CornerRadii(5), Insets.EMPTY)));
         pageIndicator.setStyle("-fx-font-size: 24px; -fx-font-weight: bold;");
-    }
-
-    @FXML
-    private void handleNoteAction(ActionEvent event) {
-        String note1 = ((Button) event.getSource()).getText();
-        boolean[] griff = model.getGriff(note1);
-
-        if (!selectedNotes.isEmpty()) {
-//            for (javafx.scene.Node note : selectedNotes) {
-//                Integer col = GridPane.getColumnIndex(note);
-//                Integer row = GridPane.getRowIndex(note);
-//
-//                Gridpane1.getChildren().removeIf(nodeInGrid ->
-//                        GridPane.getColumnIndex(nodeInGrid) != null &&
-//                                GridPane.getRowIndex(nodeInGrid) != null &&
-//                                GridPane.getColumnIndex(nodeInGrid).equals(col) &&
-//                                GridPane.getRowIndex(nodeInGrid) >= row &&
-//                                GridPane.getRowIndex(nodeInGrid) <= row + 8
-//                );
-//
-//                for (int i = 0; i < griff.length; i++) {
-//                    javafx.scene.shape.Ellipse newEllipse = new javafx.scene.shape.Ellipse(4.2, 4.5);
-//
-//                    if (griff[i]) {
-//                        newEllipse.setFill(Color.BLACK);
-//                    } else {
-//                        newEllipse.setFill(Color.WHITE);
-//                        newEllipse.setStroke(Color.BLACK);
-//                        newEllipse.setStrokeWidth(1.4);
-//                        newEllipse.setRadiusX(newEllipse.getRadiusX() - (newEllipse.getStrokeWidth() / 2));
-//                        newEllipse.setRadiusY(newEllipse.getRadiusY() - (newEllipse.getStrokeWidth() / 2));
-//                    }
-//
-//                    if (i < 3) {
-//                        activeGridPane.add(newEllipse, col, row + i);
-//                    } else {
-//                        activeGridPane.add(newEllipse, col, row + i + 2);
-//                    }
-//
-//                    if (i == 0) {
-//                        javafx.scene.shape.Ellipse ref = newEllipse;
-//                        ref.setOnMouseClicked(e -> {
-//                            if (selectedNotes.contains(ref)) {
-//                                ref.setStroke(Color.BLACK);
-//                                selectedNotes.remove(ref);
-//                            } else {
-//                                ref.setStroke(Color.RED);
-//                                ref.setStrokeWidth(1.4);
-//                                selectedNotes.add(ref);
-//                            }
-//                        });
-//                    }
-//                }
-//            }
-//
-//            selectedNotes.clear(); // Nach Bearbeitung zurücksetzen
-        } else {
-            String note2 = ((Button) event.getSource()).getText();
-            drawGriffOnGrid(griff, note2); // Normales Hinzufügen
-        }
     }
 
     @FXML
@@ -336,115 +425,51 @@ public class Controller {
         }
     }
 
-    private void drawGriffOnGrid(boolean[] griff, String noteName) {
-        // Überprüfe, ob wir maximal 119 Zeilen erreicht haben
-        if (rowOffset >= 119) {
-            return; // Keine weiteren Noten zeichnen, wenn die maximale Zeilenanzahl erreicht ist
-        }
+    // Zeichne die neue Note in einer neuen Spalte (basierend auf columnOffset und rowOffset)
+    private void drawGriffOnGrid(boolean[] griff, String noteName, NoteModifier modifier) {
 
-        // Zeichne die neue Note in einer neuen Spalte (basierend auf columnOffset und rowOffset)
+        if (rowOffset >= 119) return;
+
+        StackPane noteContainer = null;
+
         for (int i = 0; i < griff.length; i++) {
-            Ellipse ellipse = new Ellipse(); // Erstelle eine Ellipse
-            ellipse.setRadiusX(4.2);  // Horizontaler Radius (Breite des Ovals)
-            ellipse.setRadiusY(4.5); // Vertikaler Radius (Höhe des Ovals)
+
+            Ellipse ellipse = new Ellipse(4.2, 4.5);
 
             if (griff[i]) {
-                ellipse.setFill(Color.BLACK); // Schwarzes Loch
+                ellipse.setFill(Color.BLACK);
             } else {
-                ellipse.setFill(Color.WHITE); // Weißes Loch
-                ellipse.setStroke(Color.BLACK); // Schwarze Umrandung für weiße Löcher
-                ellipse.setStrokeWidth(1.4);   // Breite der Umrandung
-
-                // Verkleinere den weißen Kreis leicht, um die Umrandung auszugleichen
-                ellipse.setRadiusX(ellipse.getRadiusX() - (ellipse.getStrokeWidth() / 2));
-                ellipse.setRadiusY(ellipse.getRadiusY() - (ellipse.getStrokeWidth() / 2));
+                ellipse.setFill(Color.WHITE);
+                ellipse.setStroke(Color.BLACK);
+                ellipse.setStrokeWidth(1.4);
+                ellipse.setRadiusX(ellipse.getRadiusX() - ellipse.getStrokeWidth() / 2);
+                ellipse.setRadiusY(ellipse.getRadiusY() - ellipse.getStrokeWidth() / 2);
             }
-            ellipse.setUserData(noteName); // ← Speichert den Namen der Note an der Ellipse
 
-            // 👉 Nur griff[0] klickbar machen
             if (i == 0) {
-                ellipse.setUserData(noteName);
-                ellipse.setOnMouseClicked(e -> {
-                    if (selectedNotes.contains(ellipse)) {
-                        ellipse.setRadiusX(3.5);
-                        ellipse.setRadiusY(3.8);
-                        ellipse.setStroke(Color.BLACK);
-                        selectedNotes.remove(ellipse);
-                    } else {
-                        ellipse.setStroke(Color.RED);
-                        selectedNotes.add(ellipse);
-                    }
-                });
-            } else {
-                ellipse.setUserData(null);
-            }
-
-            // Füge die Ellipse zur GridPane hinzu
-            if (i < 3) {
-                activeGridPane.add(ellipse, columnOffset, rowOffset + i); // Erste drei Löcher in der aktuellen Spalte und Zeile
-            } else {
-                activeGridPane.add(ellipse, columnOffset, rowOffset + i + 2); // Restliche Löcher, verschoben um 2 Zeilen
-            }
-
-            // Füge "x" für Oktav-Noten über der ersten Note hinzu
-            if (noteName.contains("Oktav") && i == 0) {
-                // Erstelle einen StackPane, um das "x" über der Note zu platzieren
-                StackPane noteContainer = new StackPane();
-                noteContainer.setAlignment(Pos.TOP_CENTER);
-
-                // Füge die Ellipse zum Container hinzu
+                noteContainer = new StackPane();
+                noteContainer.setAlignment(Pos.CENTER);
                 noteContainer.getChildren().add(ellipse);
 
-                // Erstelle das "x" und positioniere es über der Note
-                Text xMark = new Text("x");
-                xMark.setFont(Font.font("Arial", FontWeight.BOLD, 15));
-                xMark.setFill(Color.BLACK);
+                addModifierVisual(noteContainer, modifier);
 
-
-                // Positioniere das "x" über der Note
-                StackPane.setAlignment(xMark, Pos.TOP_CENTER);
-                StackPane.setMargin(xMark, new Insets(-20, 0, 0, 0)); // Verschiebe nach oben
-
-                noteContainer.getChildren().add(xMark);
-
-                // Füge den Container zur GridPane hinzu
                 activeGridPane.add(noteContainer, columnOffset, rowOffset);
-
-                // Überspringe die normale Ellipse-Platzierung, da sie jetzt im Container ist
-                continue;
+            } else {
+                int targetRow = (i < 3) ? rowOffset + i : rowOffset + i + 2;
+                activeGridPane.add(ellipse, columnOffset, targetRow);
             }
-
         }
 
-        // Überprüfe, ob wir maximal 40 Spalten erreicht haben
         if (columnOffset >= 40) {
-            columnOffset = 0;  // Zurücksetzen, wenn 40 Spalten erreicht sind
-            rowOffset += 17;   // Nächste Zeile, dabei nach 40 Spalten um 17 Zeilen erhöhen
+            columnOffset = 0;
+            rowOffset += 17;
         } else {
-            columnOffset++;    // Andernfalls die Spalte weiter erhöhen
+            columnOffset++;
         }
 
-        //Horizontaler Abstand zwischen Noten
         activeGridPane.setHgap(5.5);
-
-        // Am Ende von drawGriffOnGrid()
-        if (activeGridPane == Gridpane1) {
-            notesSeite1.add(noteName);
-        } else if (activeGridPane == Gridpane2) {
-            notesSeite2.add(noteName);
-        }
     }
-    //FUNKTIONIERENDER FRÜPR EINE SEITE
-//    // Fülle alle Noten mit Cis/Des für das Drucken
-//    private void fillRemainingRowsWithCisDes() {
-//        // Muster für "Cis/Des": Array, das die Positionen der Ovale beschreibt
-//        boolean[] cisDesGriff = model.getGriff("Cis_Des"); // Hol dir das Muster für "Cis/Des"
-//
-//        while (rowOffset < 119) { // Solange freie Zeilen vorhanden sind
-//            drawGriffOnGrid(cisDesGriff, "Cis_Des"); // Zeichne das Muster ins GridPane
-//        }
-//        selectedNotes.clear();
-//    }
+
     private List<Node> fillRemainingRowsWithCisDes(GridPane grid, int startRow, int startCol) {
         boolean[] cisDesGriff = model.getGriff("Cis_Des");
         int row = startRow;
@@ -654,14 +679,14 @@ public class Controller {
                             activeGridPane = Gridpane1;
                             rowOffset = rowOffset1;
                             columnOffset = columnOffset1;
-                            drawGriffOnGrid(griff, noteName);
+                            drawGriffOnGrid(griff, noteName, NoteModifier.NORMAL);
                             rowOffset1 = rowOffset;
                             columnOffset1 = columnOffset;
                         } else if (seite.equals("Seite2")) {
                             activeGridPane = Gridpane2;
                             rowOffset = rowOffset2;
                             columnOffset = columnOffset2;
-                            drawGriffOnGrid(griff, noteName);
+                            drawGriffOnGrid(griff, noteName, NoteModifier.NORMAL);
                             rowOffset2 = rowOffset;
                             columnOffset2 = columnOffset;
                         }
@@ -702,7 +727,7 @@ public class Controller {
                             rowOffset = rowOffset1;
                             columnOffset = columnOffset1;
 
-                            drawGriffOnGrid(griff, noteName);
+                            drawGriffOnGrid(griff, noteName, NoteModifier.NORMAL);
 
                             rowOffset1 = rowOffset;
                             columnOffset1 = columnOffset;
@@ -711,7 +736,7 @@ public class Controller {
                             rowOffset = rowOffset2;
                             columnOffset = columnOffset2;
 
-                            drawGriffOnGrid(griff, noteName);
+                            drawGriffOnGrid(griff, noteName, NoteModifier.NORMAL);
 
                             rowOffset2 = rowOffset;
                             columnOffset2 = columnOffset;
@@ -734,10 +759,6 @@ public class Controller {
 
     private void addIconsToNoteButtons() {
         Map<Button, String> mapping = Map.ofEntries(
-                Map.entry(D_Oktav, "D_Oktav.jpg"),
-                Map.entry(Dis_Es_Oktav, "Dis_Es_Oktav.jpg"),
-                Map.entry(E_Oktav, "E_Oktav.jpg"),
-                Map.entry(F_Oktav, "F_Oktav.jpg"),
                 Map.entry(Cis_Des, "Cis_Des.jpg"),
                 Map.entry(D, "D.jpg"),
                 Map.entry(Dis_Es, "Dis_Es.jpg"),
@@ -756,6 +777,7 @@ public class Controller {
                 Map.entry(Dis_Es1, "Dis_Es1.jpg"),
                 Map.entry(E1, "E1.jpg"),
                 Map.entry(Fis_Ges1, "Fis_Ges1.jpg"),
+                Map.entry(F1, "F1.jpg"),
                 Map.entry(G1, "G1.jpg"),
                 Map.entry(Gis_As1, "Gis_As1.jpg"),
                 Map.entry(A1, "A1.jpg")
@@ -768,7 +790,10 @@ public class Controller {
             Button btn = e.getKey();
             String fileName = e.getValue();
 
-            if (btn == null) continue;
+            if (btn == null) {
+                System.err.println("⚠ Button ist null für Bild: " + fileName);
+                continue;
+            }
 
             try (InputStream is = getClass().getResourceAsStream("Bilder/" + fileName)) {
                 if (is == null) {

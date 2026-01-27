@@ -42,48 +42,45 @@
                 </VBox>
             </HBox>
             <HBox spacing="10">
+                <!-- Spalte 1 -->
                 <VBox spacing="5">
-                    <Button fx:id="D_Oktav" text="D_Oktav" onAction="#handleNoteAction"/>
-                    <Button fx:id="Dis_Es_Oktav" text="Dis_Es_Oktav" onAction="#handleNoteAction"/>
-                    <Button fx:id="E_Oktav" text="E_Oktav" onAction="#handleNoteAction"/>
-                    <Button fx:id="F_Oktav" text="F_Oktav" onAction="#handleNoteAction"/>
+                    <Button fx:id="Cis_Des" text="Cis_Des"/>
+                    <Button fx:id="D" text="D"/>
+                    <Button fx:id="Dis_Es" text="Dis_Es"/>
+                    <Button fx:id="E" text="E"/>
                 </VBox>
                 <!-- Spalte 2 -->
                 <VBox spacing="5">
-                    <Button fx:id="Cis_Des" text="Cis_Des" onAction="#handleNoteAction"/>
-                    <Button fx:id="D" text="D" onAction="#handleNoteAction"/>
-                    <Button fx:id="Dis_Es" text="Dis_Es" onAction="#handleNoteAction"/>
-                    <Button fx:id="E" text="E" onAction="#handleNoteAction"/>
+                    <Button fx:id="F" text="F"/>
+                    <Button fx:id="F_1" text="F_1"/>
+                    <Button fx:id="Fis_Ges" text="Fis_Ges"/>
+                    <Button fx:id="G" text="G"/>
                 </VBox>
                 <!-- Spalte 3 -->
                 <VBox spacing="5">
-                    <Button fx:id="F" text="F" onAction="#handleNoteAction"/>
-                    <Button fx:id="F_1" text="F_1" onAction="#handleNoteAction"/>
-                    <Button fx:id="Fis_Ges" text="Fis_Ges" onAction="#handleNoteAction"/>
-                    <Button fx:id="G" text="G" onAction="#handleNoteAction"/>
+                    <Button fx:id="Gis_As" text="Gis_As"/>
+                    <Button fx:id="A" text="A"/>
+                    <Button fx:id="Ais_B" text="Ais_B"/>
+                    <Button fx:id="H" text="H"/>
                 </VBox>
                 <!-- Spalte 4 -->
                 <VBox spacing="5">
-                    <Button fx:id="Gis_As" text="Gis_As" onAction="#handleNoteAction"/>
-                    <Button fx:id="A" text="A" onAction="#handleNoteAction"/>
-                    <Button fx:id="Ais_B" text="Ais_B" onAction="#handleNoteAction"/>
-                    <Button fx:id="H" text="H" onAction="#handleNoteAction"/>
+                    <Button fx:id="C1" text="C1"/>
+                    <Button fx:id="Cis_Des1" text="Cis_Des1"/>
+                    <Button fx:id="D1" text="D1"/>
+                    <Button fx:id="Dis_Es1" text="Dis_Es1"/>
                 </VBox>
                 <!-- Spalte 5 -->
                 <VBox spacing="5">
-                    <Button fx:id="C1" text="C1" onAction="#handleNoteAction"/>
-                    <Button fx:id="Cis_Des1" text="Cis_Des1" onAction="#handleNoteAction"/>
-                    <Button fx:id="D1" text="D1" onAction="#handleNoteAction"/>
-                    <Button fx:id="Dis_Es1" text="Dis_Es1" onAction="#handleNoteAction"/>
+                    <Button fx:id="E1" text="E1"/>
+                    <Button fx:id="Fis_Ges1" text="Fis_Ges1"/>
+                    <Button fx:id="F1" text="F1"/>
+                    <Button fx:id="G1" text="G1"/>
                 </VBox>
                 <!-- Spalte 6 -->
                 <VBox spacing="5">
-                    <Button fx:id="E1" text="E1" onAction="#handleNoteAction"/>
-                    <Button fx:id="Fis_Ges1" text="Fis_Ges1" onAction="#handleNoteAction"/>
-                    <Button fx:id="F_hoch" text="F_hoch" onAction="#handleNoteAction"/>
-                    <Button fx:id="G1" text="G1" onAction="#handleNoteAction"/>
-                    <Button fx:id="Gis_As1" text="Gis_As1" onAction="#handleNoteAction"/>
-                    <Button fx:id="A1" text="A1" onAction="#handleNoteAction"/>
+                    <Button fx:id="Gis_As1" text="Gis_As1"/>
+                    <Button fx:id="A1" text="A1"/>
                 </VBox>
             </HBox>
 
