@@ -431,6 +431,7 @@ public class Controller {
         if (rowOffset >= 119) return;
 
         StackPane noteContainer = null;
+        StackPane oktavContainer = null;
 
         for (int i = 0; i < griff.length; i++) {
 
@@ -451,9 +452,26 @@ public class Controller {
                 noteContainer.setAlignment(Pos.CENTER);
                 noteContainer.getChildren().add(ellipse);
 
-                addModifierVisual(noteContainer, modifier);
+                // Nur Punkt/Strich/Feste über erstem Kreis
+                if (modifier == NoteModifier.LANG) addLine(noteContainer, -8);
+                if (modifier == NoteModifier.KURZ) addDot(noteContainer, -8);
+                if (modifier == NoteModifier.FESTE) addText(noteContainer, "f", -14);
+                if (modifier == NoteModifier.OKTAV_LANG) addLine(noteContainer, -8);
+                if (modifier == NoteModifier.OKTAV_KURZ) addDot(noteContainer, -8);
 
                 activeGridPane.add(noteContainer, columnOffset, rowOffset);
+            } else if (i == 5) {
+                // Oktav-X zwischen 3. und 4. Kreis
+                if (modifier == NoteModifier.OKTAV || modifier == NoteModifier.OKTAV_LANG || modifier == NoteModifier.OKTAV_KURZ) {
+                    oktavContainer = new StackPane();
+                    oktavContainer.setAlignment(Pos.CENTER);
+                    addX(oktavContainer);
+                    // Position: zwischen 3 und 4, etwas weiter unten
+                    GridPane.setMargin(oktavContainer, new Insets(3.5, 0, 0, 0)); // Verschiebung nach unten
+                    activeGridPane.add(oktavContainer, columnOffset, rowOffset + 5);
+                }
+                int targetRow = (i < 3) ? rowOffset + i : rowOffset + i + 2;
+                activeGridPane.add(ellipse, columnOffset, targetRow);
             } else {
                 int targetRow = (i < 3) ? rowOffset + i : rowOffset + i + 2;
                 activeGridPane.add(ellipse, columnOffset, targetRow);
