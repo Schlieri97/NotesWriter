@@ -237,12 +237,13 @@ public class Controller {
     private void addNote(String baseNote, NoteModifier modifier) {
 
         String finalNoteName = baseNote;
-        if (modifier == NoteModifier.OKTAV) {
+        // Oktav-Modifier sollten die Oktav-Griffbildung verwenden
+        if (modifier == NoteModifier.OKTAV || modifier == NoteModifier.OKTAV_LANG || modifier == NoteModifier.OKTAV_KURZ) {
             finalNoteName = baseNote + "_Oktav";
         }
 
         boolean[] griff = model.getGriff(finalNoteName);
-        drawGriffOnGrid(griff, finalNoteName, modifier);
+        drawGriffOnGrid(griff, baseNote, finalNoteName, modifier);
     }
 
     private void styleButtonsOtherButtons(Button button) {
@@ -426,7 +427,7 @@ public class Controller {
     }
 
     // Zeichne die neue Note in einer neuen Spalte (basierend auf columnOffset und rowOffset)
-    private void drawGriffOnGrid(boolean[] griff, String noteName, NoteModifier modifier) {
+    private void drawGriffOnGrid(boolean[] griff, String baseNote, String finalNoteName, NoteModifier modifier) {
 
         if (rowOffset >= 119) return;
 
@@ -446,6 +447,9 @@ public class Controller {
                 ellipse.setRadiusX(ellipse.getRadiusX() - ellipse.getStrokeWidth() / 2);
                 ellipse.setRadiusY(ellipse.getRadiusY() - ellipse.getStrokeWidth() / 2);
             }
+
+            // UserData: baseNote|Modifier - wird zum Speichern/ Laden verwendet
+            ellipse.setUserData(baseNote + "|" + modifier.name());
 
             if (i == 0) {
                 noteContainer = new StackPane();
@@ -506,7 +510,7 @@ public class Controller {
                     ellipse.setRadiusX(ellipse.getRadiusX() - (ellipse.getStrokeWidth() / 2));
                     ellipse.setRadiusY(ellipse.getRadiusY() - (ellipse.getStrokeWidth() / 2));
                 }
-                ellipse.setUserData("Cis_Des");
+                ellipse.setUserData("Cis_Des|NORMAL");
 
                 int targetRow = (i < 3) ? row + i : row + i + 2;
                 int finalCol = col;
@@ -593,44 +597,40 @@ public class Controller {
 
         if (file != null) {
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+                // Schreibe pro Note genau ein Mal: nur StackPanes mit einer Ellipse (erste Kreis)
                 for (Node node : Gridpane1.getChildren()) {
-                    if (node instanceof Ellipse ellipse) {
-                        Object data = ellipse.getUserData();
-                        if (data != null) {
-                            writer.write("Seite1;" + data.toString());
-                            writer.newLine();
-                        }
-                    }
-                    else if (node instanceof StackPane sp) {
+                    if (node instanceof StackPane sp) {
+                        Ellipse found = null;
                         for (Node child : sp.getChildren()) {
-                            if (child instanceof Ellipse childEllipse) {
-                                Object data = childEllipse.getUserData();
-                                if (data != null) {
-                                    writer.write("Seite1;" + data.toString());
-                                    writer.newLine();
-                                }
+                            if (child instanceof Ellipse e) {
+                                found = e;
                                 break;
+                            }
+                        }
+                        if (found != null) {
+                            Object data = found.getUserData();
+                            if (data != null) {
+                                writer.write("Seite1;" + data);
+                                writer.newLine();
                             }
                         }
                     }
                 }
 
                 for (Node node : Gridpane2.getChildren()) {
-                    if (node instanceof Ellipse ellipse) {
-                        Object data = ellipse.getUserData();
-                        if (data != null) {
-                            writer.write("Seite2;" + data.toString());
-                            writer.newLine();
-                        }
-                    } else if (node instanceof StackPane sp) {
+                    if (node instanceof StackPane sp) {
+                        Ellipse found = null;
                         for (Node child : sp.getChildren()) {
-                            if (child instanceof Ellipse childEllipse) {
-                                Object data = childEllipse.getUserData();
-                                if (data != null) {
-                                    writer.write("Seite2;" + data.toString());
-                                    writer.newLine();
-                                }
+                            if (child instanceof Ellipse e) {
+                                found = e;
                                 break;
+                            }
+                        }
+                        if (found != null) {
+                            Object data = found.getUserData();
+                            if (data != null) {
+                                writer.write("Seite2;" + data);
+                                writer.newLine();
                             }
                         }
                     }
@@ -690,21 +690,41 @@ public class Controller {
                     String[] parts = line.split(";");
                     if (parts.length == 2) {
                         String seite = parts[0];
-                        String noteName = parts[1];
-                        boolean[] griff = model.getGriff(noteName);
+                        String token = parts[1];
+                        String baseNote;
+                        NoteModifier modifier = NoteModifier.NORMAL;
+
+                        if (token.contains("|")) {
+                            String[] t = token.split("\\|");
+                            baseNote = t[0];
+                            try {
+                                modifier = NoteModifier.valueOf(t[1]);
+                            } catch (Exception ex) {
+                                modifier = NoteModifier.NORMAL;
+                            }
+                        } else {
+                            baseNote = token;
+                        }
+
+                        String finalNoteName = baseNote;
+                        if (modifier == NoteModifier.OKTAV || modifier == NoteModifier.OKTAV_LANG || modifier == NoteModifier.OKTAV_KURZ) {
+                            finalNoteName = baseNote + "_Oktav";
+                        }
+
+                        boolean[] griff = model.getGriff(finalNoteName);
 
                         if (seite.equals("Seite1")) {
                             activeGridPane = Gridpane1;
                             rowOffset = rowOffset1;
                             columnOffset = columnOffset1;
-                            drawGriffOnGrid(griff, noteName, NoteModifier.NORMAL);
+                            drawGriffOnGrid(griff, baseNote, finalNoteName, modifier);
                             rowOffset1 = rowOffset;
                             columnOffset1 = columnOffset;
                         } else if (seite.equals("Seite2")) {
                             activeGridPane = Gridpane2;
                             rowOffset = rowOffset2;
                             columnOffset = columnOffset2;
-                            drawGriffOnGrid(griff, noteName, NoteModifier.NORMAL);
+                            drawGriffOnGrid(griff, baseNote, finalNoteName, modifier);
                             rowOffset2 = rowOffset;
                             columnOffset2 = columnOffset;
                         }
@@ -737,15 +757,35 @@ public class Controller {
                     String[] parts = line.split(";");
                     if (parts.length == 2) {
                         String seite = parts[0];
-                        String noteName = parts[1];
-                        boolean[] griff = model.getGriff(noteName);
+                        String token = parts[1];
+                        String baseNote;
+                        NoteModifier modifier = NoteModifier.NORMAL;
+
+                        if (token.contains("|")) {
+                            String[] t = token.split("\\|");
+                            baseNote = t[0];
+                            try {
+                                modifier = NoteModifier.valueOf(t[1]);
+                            } catch (Exception ex) {
+                                modifier = NoteModifier.NORMAL;
+                            }
+                        } else {
+                            baseNote = token;
+                        }
+
+                        String finalNoteName = baseNote;
+                        if (modifier == NoteModifier.OKTAV || modifier == NoteModifier.OKTAV_LANG || modifier == NoteModifier.OKTAV_KURZ) {
+                            finalNoteName = baseNote + "_Oktav";
+                        }
+
+                        boolean[] griff = model.getGriff(finalNoteName);
 
                         if (seite.equals("Seite1")) {
                             activeGridPane = Gridpane1;
                             rowOffset = rowOffset1;
                             columnOffset = columnOffset1;
 
-                            drawGriffOnGrid(griff, noteName, NoteModifier.NORMAL);
+                            drawGriffOnGrid(griff, baseNote, finalNoteName, modifier);
 
                             rowOffset1 = rowOffset;
                             columnOffset1 = columnOffset;
@@ -754,7 +794,7 @@ public class Controller {
                             rowOffset = rowOffset2;
                             columnOffset = columnOffset2;
 
-                            drawGriffOnGrid(griff, noteName, NoteModifier.NORMAL);
+                            drawGriffOnGrid(griff, baseNote, finalNoteName, modifier);
 
                             rowOffset2 = rowOffset;
                             columnOffset2 = columnOffset;
