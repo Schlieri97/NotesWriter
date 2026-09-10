@@ -16,7 +16,8 @@
 <?import javafx.scene.shape.Circle?>
 <?import javafx.scene.control.TextField?>
 
-<AnchorPane xmlns="http://javafx.com/javafx/16" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.code.noteswriter.Controller">
+<AnchorPane xmlns="http://javafx.com/javafx/16" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.code.noteswriter.Controller"
+            style="-fx-background-color: #EEF3F8;">
     <HBox spacing="16.0" AnchorPane.topAnchor="16.0" AnchorPane.leftAnchor="16.0"
           AnchorPane.rightAnchor="16.0" AnchorPane.bottomAnchor="16.0">
 
@@ -31,7 +32,7 @@
                 <StackPane fx:id="pageCanvas"
                            minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                            minHeight="910.0" prefHeight="910.0" maxHeight="910.0"
-                           style="-fx-background-color: white;">
+                           style="-fx-background-color: white; -fx-border-color: #D7E1EC; -fx-border-width: 1px; -fx-border-radius: 12px; -fx-background-radius: 12px;">
                     <Pane minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                           minHeight="910.0" prefHeight="910.0" maxHeight="910.0">
                         <!-- Die Kreise gehören zur Seite und nicht zu einem skalierten Hintergrundbild. -->
@@ -66,9 +67,10 @@
 
         <!-- Rechter Bereich: übersichtliche Bedienleiste -->
         <ScrollPane fx:id="controlPanel" fitToWidth="true" prefWidth="365.0" minWidth="310.0"
+                    style="-fx-background-color: transparent; -fx-background: transparent;"
                     maxWidth="420.0" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED">
             <content>
-                <VBox spacing="14.0" style="-fx-padding: 16; -fx-background-color: #F7F8FA;">
+                <VBox spacing="14.0" style="-fx-padding: 18; -fx-background-color: #F8FAFC; -fx-border-color: #DCE6F0; -fx-border-width: 0 0 0 1px;">
                     <VBox spacing="5.0" alignment="CENTER_LEFT">
                             <Label text="SZ Notenschreiber"
                                    style="-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #263238;" />

@@ -13,6 +13,7 @@ import javafx.print.Paper;
 import javafx.print.Printer;
 import javafx.scene.Node;
 import javafx.scene.Group;
+import javafx.scene.Cursor;
 import javafx.scene.control.*;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.image.ImageView;
@@ -236,8 +237,31 @@ public class Controller {
         pageIndicator.setTextFill(Color.BLUE);
         updateEditSelectionLabel();
         addIconsToNoteButtons();
+        setupTooltips();
         setupDragAndDrop();
         setupMouseSelection();
+    }
+
+    private void setupTooltips() {
+        helpButton.setTooltip(new Tooltip("Kurzanleitung und Kontaktinformationen öffnen"));
+        leftPageButton.setTooltip(new Tooltip("Linke Notenseite aktivieren"));
+        rightPageButton.setTooltip(new Tooltip("Rechte Notenseite aktivieren"));
+        deleteLastNoteButton.setTooltip(new Tooltip("Die zuletzt eingefügte Note der aktiven Seite löschen"));
+        deleteAllNotesButton.setTooltip(new Tooltip("Alle Noten, Pausenstriche und Beschriftungen der aktiven Seite löschen"));
+        Wiederholungszeichen.setTooltip(new Tooltip("Normalen Strich oder Wiederholungszeichen auswählen"));
+        pauseStrokeButton.setTooltip(new Tooltip("Pausenstrich an der aktuellen Position einfügen"));
+        addFreeTextButton.setTooltip(new Tooltip("Den Text aus dem Eingabefeld auf der Seite platzieren"));
+        Speichern.setTooltip(new Tooltip("Die aktuelle Notenschrift als Datei speichern"));
+        Laden.setTooltip(new Tooltip("Eine gespeicherte Notenschrift öffnen"));
+        printGridPaneButton.setTooltip(new Tooltip("Die Notenseiten drucken"));
+        freeTextInput.setTooltip(new Tooltip("Text eingeben, der auf der Seite erscheinen soll"));
+
+        for (Button noteButton : List.of(
+                Cis_Des, D, Dis_Es, E, F, F_1, Fis_Ges, G, Gis_As,
+                A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1,
+                Fis_Ges1, F1, G1, Gis_As1, A1)) {
+            noteButton.setTooltip(new Tooltip("Linksklick: Note einfügen · Rechtsklick: Varianten"));
+        }
     }
 
     @FXML
@@ -1662,26 +1686,43 @@ public class Controller {
     }
 
     private void styleButtonsOtherButtons(Button button) {
-        String emphasis = button == deleteAllNotesButton ? "-fx-font-weight: bold; " : "";
-        button.setStyle("-fx-background-color: #E0E0E0; " +  // hellgrauer Hintergrund
-                "-fx-border-color: #B0B0B0; " +      // grauer Rand
+        boolean destructive = button == deleteLastNoteButton || button == deleteAllNotesButton;
+        boolean primary = button == Speichern || button == Laden || button == printGridPaneButton;
+        boolean tool = button == Wiederholungszeichen || button == pauseStrokeButton || button == addFreeTextButton;
+        boolean bold = button == deleteAllNotesButton;
+
+        String normalBackground = destructive ? "#FFF1F2" : primary ? "#2563EB" : tool ? "#0F766E" : "#FFFFFF";
+        String normalBorder = destructive ? "#FDA4AF" : primary ? "#1D4ED8" : tool ? "#0D9488" : "#D5E0EC";
+        String normalText = destructive ? "#B42318" : (primary || tool) ? "#FFFFFF" : "#203040";
+        String hoverBackground = destructive ? "#FFE4E6" : primary ? "#1D4ED8" : tool ? "#115E59" : "#EEF4FB";
+        String hoverBorder = destructive ? "#FB7185" : primary ? "#1E40AF" : tool ? "#0F766E" : "#3B82F6";
+        String weight = bold ? "-fx-font-weight: bold; " : "-fx-font-weight: 600; ";
+
+        String normalStyle = "-fx-background-color: " + normalBackground + "; " +
+                "-fx-border-color: " + normalBorder + "; " +
                 "-fx-border-width: 1px; " +
-                "-fx-font-size: 14px; " +            // größere Schrift
-                "-fx-text-fill: #333333; " +         // dunkle Schriftfarbe
-                "-fx-background-radius: 6px; " +     // abgerundete Ecken
-                emphasis +
-                "-fx-padding: 6 12;");               // etwas Innenabstand
-        button.setOnMouseEntered(e -> button.setStyle(
-                "-fx-background-color: #D0D0D0; " +
-                        "-fx-border-color: #A0A0A0; " +
-                        "-fx-font-size: 14px; " +
-                        "-fx-text-fill: #222222; " +
-                        "-fx-background-radius: 6px;" +
-                        emphasis +
-                        "-fx-padding: 6 12;"
-        ));
+                "-fx-font-size: 13px; " +
+                weight +
+                "-fx-text-fill: " + normalText + "; " +
+                "-fx-background-radius: 10px; " +
+                "-fx-border-radius: 10px; " +
+                "-fx-padding: 8 12;";
+        String hoverStyle = "-fx-background-color: " + hoverBackground + "; " +
+                "-fx-border-color: " + hoverBorder + "; " +
+                "-fx-border-width: 1px; " +
+                "-fx-font-size: 13px; " +
+                weight +
+                "-fx-text-fill: " + normalText + "; " +
+                "-fx-background-radius: 10px; " +
+                "-fx-border-radius: 10px; " +
+                "-fx-padding: 8 12;";
+
+        button.setStyle(normalStyle);
+        button.setOnMouseEntered(e -> button.setStyle(hoverStyle));
+        button.setOnMouseExited(e -> button.setStyle(normalStyle));
+        button.setCursor(Cursor.HAND);
         button.setPrefWidth(150);
-        button.setPrefHeight(40);
+        button.setPrefHeight(42);
     }
 
     private void styleHelpButton(Button button) {
@@ -1703,21 +1744,28 @@ public class Controller {
     }
 
     private void styleButtonsNotes(Button button) {
-        button.setStyle("-fx-background-color: #E0E0E0; " +  // hellgrauer Hintergrund
-                "-fx-border-color: #B0B0B0; " +      // grauer Rand
+        String normalStyle = "-fx-background-color: #FFFFFF; " +
+                "-fx-border-color: #D5E0EC; " +
                 "-fx-border-width: 1px; " +
                 "-fx-font-size: 11px; " +
-                "-fx-text-fill: #333333; " +         // dunkle Schriftfarbe
-                "-fx-background-radius: 6px; " +     // abgerundete Ecken
-                "-fx-padding: 2 3 3 3;");
-        button.setOnMouseEntered(e -> button.setStyle(
-                "-fx-background-color: #D0D0D0; " +
-                        "-fx-border-color: #A0A0A0; " +
-                        "-fx-font-size: 11px; " +
-                        "-fx-text-fill: #222222; " +
-                        "-fx-background-radius: 6px;" +
-                        "-fx-padding: 2 3 3 3;"
-        ));
+                "-fx-font-weight: 600; " +
+                "-fx-text-fill: #203040; " +
+                "-fx-background-radius: 10px; " +
+                "-fx-border-radius: 10px; " +
+                "-fx-padding: 3 3 4 3;";
+        String hoverStyle = "-fx-background-color: #EAF3FF; " +
+                "-fx-border-color: #3B82F6; " +
+                "-fx-border-width: 1px; " +
+                "-fx-font-size: 11px; " +
+                "-fx-font-weight: 600; " +
+                "-fx-text-fill: #0F4C81; " +
+                "-fx-background-radius: 10px; " +
+                "-fx-border-radius: 10px; " +
+                "-fx-padding: 3 3 4 3;";
+        button.setStyle(normalStyle);
+        button.setOnMouseEntered(e -> button.setStyle(hoverStyle));
+        button.setOnMouseExited(e -> button.setStyle(normalStyle));
+        button.setCursor(Cursor.HAND);
         // Kompakte Notenkacheln: die Beschriftung bleibt lesbar, die
         // Notenbuttons nehmen aber deutlich weniger Platz ein.
         button.setMinWidth(68);
@@ -2551,28 +2599,28 @@ public class Controller {
 
     private void addIconsToNoteButtons() {
         Map<Button, String> mapping = Map.ofEntries(
-                Map.entry(Cis_Des, "Cis_Des.jpg"),
-                Map.entry(D, "D.jpg"),
-                Map.entry(Dis_Es, "Dis_Es.jpg"),
-                Map.entry(E, "E.jpg"),
-                Map.entry(F, "F.jpg"),
-                Map.entry(F_1, "F_1.jpg"),
-                Map.entry(Fis_Ges, "Fis_Ges.jpg"),
-                Map.entry(G, "G.jpg"),
-                Map.entry(Gis_As, "Gis_As.jpg"),
-                Map.entry(A, "A.jpg"),
-                Map.entry(Ais_B, "Ais_B.jpg"),
-                Map.entry(H, "H.jpg"),
-                Map.entry(C1, "C1.jpg"),
-                Map.entry(Cis_Des1, "Cis_Des1.jpg"),
-                Map.entry(D1, "D1.jpg"),
-                Map.entry(Dis_Es1, "Dis_Es1.jpg"),
-                Map.entry(E1, "E1.jpg"),
-                Map.entry(Fis_Ges1, "Fis_Ges1.jpg"),
-                Map.entry(F1, "F1.jpg"),
-                Map.entry(G1, "G1.jpg"),
-                Map.entry(Gis_As1, "Gis_As1.jpg"),
-                Map.entry(A1, "A1.jpg")
+                Map.entry(Cis_Des, "Cis_Des.png"),
+                Map.entry(D, "D.png"),
+                Map.entry(Dis_Es, "Dis_Es.png"),
+                Map.entry(E, "E.png"),
+                Map.entry(F, "F.png"),
+                Map.entry(F_1, "F_1.png"),
+                Map.entry(Fis_Ges, "Fis_Ges.png"),
+                Map.entry(G, "G.png"),
+                Map.entry(Gis_As, "Gis_As.png"),
+                Map.entry(A, "A.png"),
+                Map.entry(Ais_B, "Ais_B.png"),
+                Map.entry(H, "H.png"),
+                Map.entry(C1, "C1.png"),
+                Map.entry(Cis_Des1, "Cis_Des1.png"),
+                Map.entry(D1, "D1.png"),
+                Map.entry(Dis_Es1, "Dis_Es1.png"),
+                Map.entry(E1, "E1.png"),
+                Map.entry(Fis_Ges1, "Fis_Ges1.png"),
+                Map.entry(F1, "F1.png"),
+                Map.entry(G1, "G1.png"),
+                Map.entry(Gis_As1, "Gis_As1.png"),
+                Map.entry(A1, "A1.png")
         );
 
         final double ICON_MAX_WIDTH = 54;
