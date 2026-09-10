@@ -46,9 +46,6 @@ public class Model {
         griffTabellen.put("G1", new boolean[] {true, false, true, false, false, false, true});
         griffTabellen.put("Gis_As1", new boolean[] {false, false, true, false, false, true, false});
         griffTabellen.put("A1", new boolean[] {false, true, true, true, true, false, true});
-
-        griffTabellen.put("W_Offen", new boolean[] {false, false, false, false, false, false, false});
-        griffTabellen.put("W_Zu", new boolean[] {false, false, false, false, false, false, false});
     }
 
     public boolean[] getGriff(String note) {

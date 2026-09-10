@@ -1,35 +1,72 @@
 package com.code.noteswriter;
 
 import javafx.event.ActionEvent;
+import javafx.beans.binding.Bindings;
 import javafx.fxml.FXML;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.print.PageLayout;
 import javafx.print.PageOrientation;
 import javafx.print.Paper;
 import javafx.print.Printer;
 import javafx.scene.Node;
+import javafx.scene.Group;
 import javafx.scene.control.*;
+import javafx.scene.effect.DropShadow;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
-import javafx.scene.input.MouseButton;
+import javafx.scene.input.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.CubicCurveTo;
 import javafx.scene.shape.Ellipse;
 import javafx.scene.shape.Line;
+import javafx.scene.shape.MoveTo;
+import javafx.scene.shape.Path;
+import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
+import javafx.stage.Window;
+import javafx.stage.WindowEvent;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class Controller {
     @FXML
     public StackPane printArea;
+    @FXML
+    private Group pageContent;
+    @FXML
+    private StackPane pageCanvas;
+    @FXML
+    private Pane pauseOverlay;
+    @FXML
+    private Pane annotationOverlay;
+    @FXML
+    private Label editSelectionLabel;
+    @FXML
+    private Label slurSelectionLabel;
+    @FXML
+    private Button clearNoteSelectionButton;
+    @FXML
+    private Button deleteSelectedNotesButton;
+    @FXML
+    private TextField leftCircleText, rightCircleText, leftMarchText, rightMarchText, freeTextInput;
     public Label pageIndicator;
+
+    // DIN-A4-Landschaftsfläche des bisherigen Hintergrunds (1290 x 910 px).
+    // Bild und Noten werden nicht mehr gestreckt, sondern gemeinsam skaliert.
+    private static final double PAGE_WIDTH = 1290.0;
+    private static final double PAGE_HEIGHT = 910.0;
+    private static final double NOTE_SLOT_WIDTH = 8.4;
+    private static final double NOTE_GAP = 5.5;
 
     private Model model;
     private int rowOffset = 1;
@@ -37,10 +74,56 @@ public class Controller {
     private final List<Node> selectedNotes = new ArrayList<>();
     private final List<String> notesSeite1 = new ArrayList<>();
     private final List<String> notesSeite2 = new ArrayList<>();
+    private final List<PauseMarker> pauseMarkers = new ArrayList<>();
+    private final List<PageTextAnnotation> textAnnotations = new ArrayList<>();
+    private final List<SlurAnnotation> slurAnnotations = new ArrayList<>();
+    private boolean documentDirty;
+
+    private static final class PauseMarker {
+        private final GridPane grid;
+        private final Line line;
+        private final int column;
+        private final int row;
+
+        private PauseMarker(GridPane grid, Line line, int column, int row) {
+            this.grid = grid;
+            this.line = line;
+            this.column = column;
+            this.row = row;
+        }
+    }
+
+    private static final class PageTextAnnotation {
+        private final GridPane grid;
+        private final Text text;
+
+        private PageTextAnnotation(GridPane grid, Text text) {
+            this.grid = grid;
+            this.text = text;
+        }
+    }
+
+    private static final class SlurAnnotation {
+        private final GridPane grid;
+        private final Path path;
+        private final List<NoteSlot> slots;
+
+        private SlurAnnotation(GridPane grid, Path path, List<NoteSlot> slots) {
+            this.grid = grid;
+            this.path = path;
+            this.slots = slots;
+        }
+    }
+
+    private record NoteSlot(int column, int row) {
+    }
     @FXML
     public Button Cis_Des, D, Dis_Es, E,
             F, F_1, Fis_Ges, G, Gis_As, A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1, Fis_Ges1, F1, G1, Gis_As1, A1,
-            Seitenwechsel, Speichern, Laden, printGridPaneButton,  W_Offen, deleteLastNoteButton, deleteAllNotesButton;
+            Speichern, Laden, printGridPaneButton, deleteLastNoteButton,
+            deleteAllNotesButton, Wiederholungszeichen, leftPageButton, rightPageButton,
+            pauseStrokeButton, repeatStartButton, repeatEndButton,
+            addFreeTextButton, helpButton;
 
     @FXML
     public GridPane Gridpane1;
@@ -52,9 +135,51 @@ public class Controller {
     private int rowOffset2 = 1;
     private int columnOffset2 = 0;
     private ContextMenu activeContextMenu;
+    private StackPane selectedNoteContainer;
+    private GridPane selectedNoteGrid;
+    private final List<StackPane> selectedNoteContainers = new ArrayList<>();
+    private Rectangle selectionRectangle;
+    private Point2D selectionStart;
+    private boolean draggingSelection;
     public void setModel(Model model) {
         this.model = model;
-        this.activeGridPane = Gridpane1;
+        selectPage(Gridpane1);
+    }
+
+    private void markDocumentDirty() {
+        documentDirty = true;
+    }
+
+    /**
+     * Wird vom Hauptfenster vor dem Schließen aufgerufen.
+     * Bei Abbrechen oder einem abgebrochenen/fehlgeschlagenen Speichern bleibt
+     * das Fenster geöffnet.
+     */
+    public void handleCloseRequest(WindowEvent event) {
+        if (!documentDirty) {
+            return;
+        }
+
+        Window owner = event.getSource() instanceof Window window ? window : null;
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Ungespeicherte Änderungen");
+        alert.setHeaderText("Möchtest du die Änderungen vor dem Schließen speichern?");
+        alert.setContentText("Nicht gespeicherte Noten und Texte gehen sonst verloren.");
+        if (owner != null) {
+            alert.initOwner(owner);
+        }
+
+        ButtonType save = new ButtonType("Speichern", ButtonBar.ButtonData.YES);
+        ButtonType discard = new ButtonType("Nicht speichern", ButtonBar.ButtonData.NO);
+        ButtonType cancel = new ButtonType("Abbrechen", ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(save, discard, cancel);
+
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isEmpty() || result.get() == cancel) {
+            event.consume();
+        } else if (result.get() == save && !saveToFile(owner)) {
+            event.consume();
+        }
     }
 
     private static final Set<String> NO_OKTAV_NOTES = Set.of(
@@ -70,6 +195,7 @@ public class Controller {
 
     @FXML
     public void initialize() {
+        setupResponsivePage();
         setupAllNoteButtons();
         styleButtonsNotes(Cis_Des);
         styleButtonsNotes(D);
@@ -93,15 +219,992 @@ public class Controller {
         styleButtonsNotes(G1);
         styleButtonsNotes(Gis_As1);
         styleButtonsNotes(A1);
-        styleButtonsOtherButtons(Seitenwechsel);
         styleButtonsOtherButtons(Speichern);
         styleButtonsOtherButtons(Laden);
         styleButtonsOtherButtons(printGridPaneButton);
-        styleButtonsOtherButtons(W_Offen);
         styleButtonsOtherButtons(deleteLastNoteButton);
         styleButtonsOtherButtons(deleteAllNotesButton);
+        styleButtonsOtherButtons(Wiederholungszeichen);
+        styleButtonsOtherButtons(pauseStrokeButton);
+        styleButtonsOtherButtons(addFreeTextButton);
+        styleHelpButton(helpButton);
+        stylePageButton(leftPageButton);
+        stylePageButton(rightPageButton);
+        deleteAllNotesButton.setPrefWidth(300);
+        deleteAllNotesButton.setMaxWidth(Double.MAX_VALUE);
+        setupPageTextFields();
         pageIndicator.setTextFill(Color.BLUE);
+        updateEditSelectionLabel();
         addIconsToNoteButtons();
+        setupDragAndDrop();
+        setupMouseSelection();
+    }
+
+    @FXML
+    private void handleHelpAction(ActionEvent event) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Hilfe und Kontakt – SF Notenschreiber");
+        dialog.setHeaderText("Bedienung und Kontakt");
+        if (helpButton.getScene() != null) {
+            dialog.initOwner(helpButton.getScene().getWindow());
+        }
+
+        TextArea helpText = new TextArea("""
+                Noten einfügen
+                • Eine Note links anklicken, um sie auf der aktiven Seite einzufügen.
+                • Mit einem Rechtsklick auf einen Noten-Button können Varianten gewählt werden.
+                • Die aktive Seite wird oben über „Linke Seite“ oder „Rechte Seite“ ausgewählt.
+
+                Elemente bearbeiten
+                • Noten können mit der linken Maustaste ausgewählt und verschoben werden.
+                • Wiederholungszeichen und Pausenstriche werden über die entsprechenden Buttons eingefügt.
+                • Ein Pausenstrich kann mit Rechtsklick und „Pausenstrich löschen“ entfernt werden.
+                • Freien Text eingeben, „Text auf Seite einfügen“ drücken und den Text auf der Seite verschieben.
+                • Freier Text kann mit Rechtsklick und „Text löschen“ entfernt werden.
+
+                Speichern, Laden und Drucken
+                • „Speichern“ legt die aktuelle Notenschrift als Datei ab.
+                • „Laden“ stellt eine zuvor gespeicherte Notenschrift wieder her.
+                • „Drucken“ erstellt einen Ausdruck der Notenseiten.
+
+                Kontakt
+                Erstellt und gebaut von Schlieri97.
+                """);
+        helpText.setEditable(false);
+        helpText.setWrapText(true);
+        helpText.setPrefRowCount(24);
+        helpText.setPrefColumnCount(62);
+        helpText.setStyle("-fx-font-size: 14px;");
+
+        dialog.getDialogPane().setContent(helpText);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialog.showAndWait();
+    }
+
+    /**
+     * Seite und Noten liegen in einer gemeinsamen, festen Seitenfläche.
+     * Nur diese Fläche wird an den verfügbaren Platz angepasst; dadurch
+     * behalten die Noten ihre Position relativ zur Seite.
+     */
+    private void setupResponsivePage() {
+        pageCanvas.resize(PAGE_WIDTH, PAGE_HEIGHT);
+
+        var pageScale = Bindings.createDoubleBinding(() -> {
+            double availableWidth = printArea.getWidth();
+            double availableHeight = printArea.getHeight();
+
+            if (availableWidth <= 0 || availableHeight <= 0) {
+                return 1.0;
+            }
+
+            return Math.min(availableWidth / PAGE_WIDTH, availableHeight / PAGE_HEIGHT);
+        }, printArea.widthProperty(), printArea.heightProperty());
+
+        pageContent.scaleXProperty().bind(pageScale);
+        pageContent.scaleYProperty().bind(pageScale);
+    }
+
+    private void setupPageTextFields() {
+        leftCircleText.setPromptText("Buchstabe");
+        rightCircleText.setPromptText("Buchstabe");
+        leftMarchText.setPromptText("z. B. Marschname");
+        rightMarchText.setPromptText("z. B. Marschname");
+
+        for (TextField field : List.of(leftCircleText, rightCircleText, leftMarchText, rightMarchText)) {
+            // Die Kopfzeilenfelder müssen vor den vollflächigen Zeichenebenen liegen.
+            field.toFront();
+            field.setFocusTraversable(true);
+            field.textProperty().addListener((observable, oldValue, newValue) -> markDocumentDirty());
+            field.setOnMousePressed(event -> field.requestFocus());
+            field.setOnAction(event -> field.getParent().requestFocus());
+        }
+
+        // Die leere Overlay-Fläche darf keine Klicks auf darunterliegende Felder abfangen.
+        annotationOverlay.setPickOnBounds(false);
+    }
+
+    private Map<TextField, String> hidePromptTextsForPrinting() {
+        Map<TextField, String> prompts = new LinkedHashMap<>();
+        for (TextField field : List.of(leftCircleText, rightCircleText, leftMarchText, rightMarchText)) {
+            prompts.put(field, field.getPromptText());
+            field.setPromptText("");
+        }
+        return prompts;
+    }
+
+    private void restorePromptTexts(Map<TextField, String> prompts) {
+        prompts.forEach(TextField::setPromptText);
+    }
+
+    @FXML
+    private void handleAddFreeTextAction(ActionEvent event) {
+        String value = freeTextInput.getText() == null ? "" : freeTextInput.getText().trim();
+        if (value.isEmpty()) {
+            return;
+        }
+        addTextAnnotation(value, defaultAnnotationPosition());
+        freeTextInput.clear();
+    }
+
+    private void addTextAnnotation(String value, Point2D position) {
+        markDocumentDirty();
+        Text text = new Text(value);
+        text.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+        text.setFill(Color.BLACK);
+        text.setLayoutX(position.getX());
+        text.setLayoutY(position.getY());
+        text.setUserData("TEXT|" + encodeText(value));
+        installTextDragHandler(text);
+        installTextContextMenu(text);
+        annotationOverlay.getChildren().add(text);
+        textAnnotations.add(new PageTextAnnotation(activeGridPane, text));
+    }
+
+    private Point2D defaultAnnotationPosition() {
+        Node previous = findGridSlotNode(activeGridPane, columnOffset - 1, rowOffset);
+        if (previous != null) {
+            Bounds bounds = previous.getBoundsInParent();
+            Point2D point = activeGridPane.localToParent(bounds.getMinX(), bounds.getMinY() - 12);
+            return new Point2D(point.getX(), Math.max(16, point.getY()));
+        }
+        double x = activeGridPane == Gridpane1 ? 80 : 710;
+        return new Point2D(x, 96);
+    }
+
+    private void installTextDragHandler(Text text) {
+        text.setOnMousePressed(event -> {
+            if (event.getButton() != MouseButton.PRIMARY) {
+                return;
+            }
+            Point2D point = annotationOverlay.sceneToLocal(event.getSceneX(), event.getSceneY());
+            text.setUserData("TEXT|" + encodeText(text.getText()));
+            text.setTranslateX(point.getX() - text.getLayoutX());
+            text.setTranslateY(point.getY() - text.getLayoutY());
+            event.consume();
+        });
+        text.setOnMouseDragged(event -> {
+            if (!event.isPrimaryButtonDown()) {
+                return;
+            }
+            markDocumentDirty();
+            Point2D point = annotationOverlay.sceneToLocal(event.getSceneX(), event.getSceneY());
+            double offsetX = text.getTranslateX();
+            double offsetY = text.getTranslateY();
+            double x = point.getX() - offsetX;
+            double y = point.getY() - offsetY;
+            double width = text.getLayoutBounds().getWidth();
+            text.setLayoutX(Math.max(4, Math.min(PAGE_WIDTH - width - 4, x)));
+            text.setLayoutY(Math.max(16, Math.min(PAGE_HEIGHT - 4, y)));
+            event.consume();
+        });
+        text.setOnMouseReleased(event -> {
+            if (event.getButton() != MouseButton.PRIMARY) {
+                return;
+            }
+            text.setTranslateX(0);
+            text.setTranslateY(0);
+            event.consume();
+        });
+    }
+
+    private void installTextContextMenu(Text text) {
+        text.setOnContextMenuRequested(event -> {
+            if (activeContextMenu != null) {
+                activeContextMenu.hide();
+            }
+
+            ContextMenu menu = new ContextMenu();
+            MenuItem delete = new MenuItem("Text löschen");
+            delete.setOnAction(actionEvent -> removeTextAnnotation(text));
+            menu.getItems().add(delete);
+            activeContextMenu = menu;
+            menu.setOnHidden(hiddenEvent -> {
+                if (activeContextMenu == menu) {
+                    activeContextMenu = null;
+                }
+            });
+            menu.show(text, event.getScreenX(), event.getScreenY());
+            event.consume();
+        });
+    }
+
+    private void removeTextAnnotation(Text text) {
+        textAnnotations.removeIf(annotation -> {
+            if (annotation.text == text) {
+                markDocumentDirty();
+                annotationOverlay.getChildren().remove(text);
+                return true;
+            }
+            return false;
+        });
+    }
+
+    @FXML
+    private void handleAddSlurAction(ActionEvent event) {
+        if (selectedNoteContainers.size() < 2 ||
+                selectedNoteContainers.stream().anyMatch(this::isRepeatMarker)) {
+            updateSlurSelectionLabel("Mindestens zwei Noten auswählen.");
+            return;
+        }
+
+        GridPane grid = findNoteGrid(selectedNoteContainers.get(0));
+        if (grid == null || selectedNoteContainers.stream().anyMatch(note -> findNoteGrid(note) != grid)) {
+            updateSlurSelectionLabel("Der Bogen muss auf einer Seite liegen.");
+            return;
+        }
+
+        List<NoteSlot> slots = selectedNoteContainers.stream()
+                .map(note -> new NoteSlot(GridPane.getColumnIndex(note), GridPane.getRowIndex(note)))
+                .filter(slot -> slot.column() >= 0 && slot.row() >= 0)
+                .distinct()
+                .sorted(Comparator.comparingInt(NoteSlot::row).thenComparingInt(NoteSlot::column))
+                .toList();
+
+        Path path = createSlurPath(grid, slots);
+        if (path.getElements().isEmpty()) {
+            updateSlurSelectionLabel("Die Auswahl enthält keine passende Notengruppe.");
+            return;
+        }
+
+        markDocumentDirty();
+        annotationOverlay.getChildren().add(path);
+        slurAnnotations.add(new SlurAnnotation(grid, path, slots));
+        updateSlurSelectionLabel("Bogen eingefügt – erneut Noten markieren für den nächsten Bogen.");
+        clearNoteSelection();
+    }
+
+    private Path createSlurPath(GridPane grid, List<NoteSlot> slots) {
+        Path path = new Path();
+        path.setFill(null);
+        path.setStroke(Color.BLACK);
+        path.setStrokeWidth(2.0);
+        path.setMouseTransparent(false);
+        path.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.SECONDARY) {
+                showSlurContextMenu(path, event.getScreenX(), event.getScreenY());
+                event.consume();
+            }
+        });
+
+        // Beim Laden können die Noten gerade erst in das Grid eingefügt
+        // worden sein. Vor dem Auslesen der Bounds muss JavaFX das Grid daher
+        // einmal layouten, sonst bleibt der Bogen unsichtbar.
+        grid.applyCss();
+        grid.layout();
+
+        Map<Integer, List<NoteSlot>> byRow = new TreeMap<>();
+        for (NoteSlot slot : slots) {
+            byRow.computeIfAbsent(slot.row(), ignored -> new ArrayList<>()).add(slot);
+        }
+
+        for (List<NoteSlot> rowSlots : byRow.values()) {
+            rowSlots.sort(Comparator.comparingInt(NoteSlot::column));
+            Node first = findGridSlotNode(grid, rowSlots.get(0).column(), rowSlots.get(0).row());
+            Node last = findGridSlotNode(grid, rowSlots.get(rowSlots.size() - 1).column(), rowSlots.get(rowSlots.size() - 1).row());
+            if (first == null || last == null) {
+                continue;
+            }
+
+            Bounds firstBounds = first.getBoundsInParent();
+            Bounds lastBounds = last.getBoundsInParent();
+            double firstCenterX = firstBounds.getMinX() + firstBounds.getWidth() / 2.0;
+            double lastCenterX = lastBounds.getMinX() + lastBounds.getWidth() / 2.0;
+            if (rowSlots.size() == 1) {
+                // Bei einem Zeilenwechsel bleibt so auch der Anfang bzw.
+                // das Ende des Bogens auf der jeweils anderen Zeile sichtbar.
+                firstCenterX -= 7;
+                lastCenterX += 7;
+            }
+            Point2D start = grid.localToParent(
+                    firstCenterX,
+                    firstBounds.getMinY() - 4
+            );
+            Point2D end = grid.localToParent(
+                    lastCenterX,
+                    lastBounds.getMinY() - 4
+            );
+            double span = Math.max(18, end.getX() - start.getX());
+            double archHeight = Math.max(10, Math.min(22, span * 0.14));
+            double archY = Math.min(start.getY(), end.getY()) - archHeight;
+
+            path.getElements().add(new MoveTo(start.getX(), start.getY()));
+            path.getElements().add(new CubicCurveTo(
+                    start.getX() + span * 0.28, archY,
+                    end.getX() - span * 0.28, archY,
+                    end.getX(), end.getY()
+            ));
+        }
+        return path;
+    }
+
+    private void showSlurContextMenu(Path path, double screenX, double screenY) {
+        if (activeContextMenu != null) {
+            activeContextMenu.hide();
+        }
+
+        ContextMenu menu = new ContextMenu();
+        MenuItem delete = new MenuItem("Bogen löschen");
+        delete.setOnAction(event -> deleteSlur(path));
+        menu.getItems().add(delete);
+        activeContextMenu = menu;
+        menu.setOnHidden(event -> activeContextMenu = null);
+        menu.show(annotationOverlay, screenX, screenY);
+    }
+
+    private void deleteSlur(Path path) {
+        boolean removed = slurAnnotations.removeIf(annotation -> annotation.path == path);
+        if (removed) {
+            markDocumentDirty();
+        }
+        annotationOverlay.getChildren().remove(path);
+    }
+
+    private void updateSlurSelectionLabel(String message) {
+        if (slurSelectionLabel != null) {
+            slurSelectionLabel.setText(message);
+        }
+    }
+
+    private void setupDragAndDrop() {
+        List<Button> noteButtons = List.of(
+                Cis_Des, D, Dis_Es, E, F, F_1, Fis_Ges, G, Gis_As,
+                A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1,
+                Fis_Ges1, F1, G1, Gis_As1, A1
+        );
+
+        for (Button button : noteButtons) {
+            installDragSource(button, "NOTE|" + button.getText() + "|NORMAL");
+        }
+        installDragSource(Wiederholungszeichen, "SPECIAL|REPEAT_START");
+        installDragSource(pauseStrokeButton, "SPECIAL|PAUSE");
+
+        pageCanvas.setOnDragOver(event -> {
+            Dragboard dragboard = event.getDragboard();
+            if (isSupportedDrag(dragboard)) {
+                event.acceptTransferModes(TransferMode.COPY);
+            }
+            event.consume();
+        });
+
+        pageCanvas.setOnDragDropped(event -> {
+            boolean completed = dropElement(event);
+            event.setDropCompleted(completed);
+            event.consume();
+        });
+    }
+
+    private void installDragSource(Node source, String payload) {
+        source.setOnDragDetected(event -> {
+            Dragboard dragboard = source.startDragAndDrop(TransferMode.COPY);
+            ClipboardContent content = new ClipboardContent();
+            content.putString(payload);
+            dragboard.setContent(content);
+            event.consume();
+        });
+    }
+
+    private void setupMouseSelection() {
+        selectionRectangle = new Rectangle();
+        selectionRectangle.setManaged(false);
+        selectionRectangle.setMouseTransparent(true);
+        selectionRectangle.setFill(Color.web("#1976D2", 0.16));
+        selectionRectangle.setStroke(Color.web("#1976D2", 0.85));
+        selectionRectangle.setStrokeWidth(1.5);
+        selectionRectangle.setVisible(false);
+        pageCanvas.getChildren().add(selectionRectangle);
+
+        pageCanvas.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+            if (event.getButton() == MouseButton.PRIMARY
+                    && !(event.getTarget() instanceof Text)
+                    && !isPageTextFieldTarget(event.getTarget())) {
+                selectionStart = new Point2D(event.getX(), event.getY());
+                draggingSelection = false;
+            }
+        });
+
+        pageCanvas.addEventFilter(MouseEvent.MOUSE_DRAGGED, event -> {
+            if (selectionStart == null || !event.isPrimaryButtonDown()) {
+                return;
+            }
+
+            double width = Math.abs(event.getX() - selectionStart.getX());
+            double height = Math.abs(event.getY() - selectionStart.getY());
+            if (!draggingSelection && (width > 6 || height > 6)) {
+                draggingSelection = true;
+                clearNoteSelection();
+            }
+            if (draggingSelection) {
+                updateSelectionRectangle(event.getX(), event.getY());
+                event.consume();
+            }
+        });
+
+        pageCanvas.addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
+            if (event.getButton() == MouseButton.PRIMARY && draggingSelection) {
+                selectNotesInRectangle(currentSelectionBounds(event.getX(), event.getY()));
+                selectionRectangle.setVisible(false);
+                event.consume();
+            }
+            selectionStart = null;
+            draggingSelection = false;
+        });
+    }
+
+    private boolean isPageTextFieldTarget(Object target) {
+        if (!(target instanceof Node node)) {
+            return false;
+        }
+
+        while (node != null) {
+            if (node == leftCircleText || node == rightCircleText
+                    || node == leftMarchText || node == rightMarchText) {
+                return true;
+            }
+            node = node.getParent();
+        }
+        return false;
+    }
+
+    private void updateSelectionRectangle(double currentX, double currentY) {
+        double minX = Math.min(selectionStart.getX(), currentX);
+        double minY = Math.min(selectionStart.getY(), currentY);
+        selectionRectangle.setX(minX);
+        selectionRectangle.setY(minY);
+        selectionRectangle.setWidth(Math.abs(currentX - selectionStart.getX()));
+        selectionRectangle.setHeight(Math.abs(currentY - selectionStart.getY()));
+        selectionRectangle.setVisible(true);
+    }
+
+    private Bounds currentSelectionBounds(double currentX, double currentY) {
+        double minX = Math.min(selectionStart.getX(), currentX);
+        double minY = Math.min(selectionStart.getY(), currentY);
+        return new javafx.geometry.BoundingBox(
+                minX,
+                minY,
+                Math.abs(currentX - selectionStart.getX()),
+                Math.abs(currentY - selectionStart.getY())
+        );
+    }
+
+    private void selectNotesInRectangle(Bounds selectionBounds) {
+        List<StackPane> notes = new ArrayList<>();
+        for (GridPane grid : List.of(Gridpane1, Gridpane2)) {
+            for (Node node : grid.getChildren()) {
+                if (!(node instanceof StackPane noteContainer) || !isSelectableContainer(noteContainer)) {
+                    continue;
+                }
+                Bounds noteBounds = noteBoundsInPage(noteContainer, grid);
+                if (selectionBounds.intersects(noteBounds)) {
+                    notes.add(noteContainer);
+                }
+            }
+        }
+        setSelectedNotes(notes);
+    }
+
+    private Bounds noteBoundsInPage(StackPane noteContainer, GridPane grid) {
+        int column = GridPane.getColumnIndex(noteContainer);
+        int row = GridPane.getRowIndex(noteContainer);
+        double minX = Double.POSITIVE_INFINITY;
+        double minY = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double maxY = Double.NEGATIVE_INFINITY;
+
+        for (Node node : grid.getChildren()) {
+            Integer nodeColumn = GridPane.getColumnIndex(node);
+            Integer nodeRow = GridPane.getRowIndex(node);
+            boolean belongsToSlot = nodeColumn != null && nodeRow != null &&
+                    nodeColumn == column && nodeRow >= row && nodeRow <= row + 8 &&
+                    (node instanceof Ellipse || node == noteContainer ||
+                            (node instanceof StackPane && node.getUserData() == null));
+            if (!belongsToSlot) {
+                continue;
+            }
+
+            Bounds bounds = pageCanvas.sceneToLocal(node.localToScene(node.getBoundsInLocal()));
+            minX = Math.min(minX, bounds.getMinX());
+            minY = Math.min(minY, bounds.getMinY());
+            maxX = Math.max(maxX, bounds.getMaxX());
+            maxY = Math.max(maxY, bounds.getMaxY());
+        }
+
+        if (minX == Double.POSITIVE_INFINITY) {
+            return pageCanvas.sceneToLocal(noteContainer.localToScene(noteContainer.getBoundsInLocal()));
+        }
+        return new javafx.geometry.BoundingBox(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private boolean isSelectableContainer(StackPane node) {
+        return node.getUserData() instanceof String token &&
+                isSelectableToken(token);
+    }
+
+    private boolean isRepeatMarker(StackPane node) {
+        return node.getUserData() instanceof String token && token.startsWith("WIEDERHOLUNG|");
+    }
+
+    private boolean isSupportedDrag(Dragboard dragboard) {
+        return dragboard.hasString() &&
+                (dragboard.getString().startsWith("NOTE|") || dragboard.getString().startsWith("SPECIAL|"));
+    }
+
+    private boolean dropElement(DragEvent event) {
+        if (!isSupportedDrag(event.getDragboard())) {
+            return false;
+        }
+
+        // Die Seite wird anhand der Drop-Position gewählt. Danach wird das
+        // Element am nächsten freien Platz dieser Seite eingefügt.
+        selectPage(event.getX() < PAGE_WIDTH / 2.0 ? Gridpane1 : Gridpane2);
+
+        String[] payload = event.getDragboard().getString().split("\\|", 3);
+        if (payload[0].equals("NOTE") && payload.length >= 2) {
+            addNote(payload[1], NoteModifier.NORMAL);
+            return true;
+        }
+        if (payload[0].equals("SPECIAL") && payload.length >= 2) {
+            switch (payload[1]) {
+                case "PAUSE" -> addPauseStroke();
+                case "REPEAT_START" -> addWiederholungszeichen(Wiederholungsart.ANFANG);
+                case "REPEAT_END" -> addWiederholungszeichen(Wiederholungsart.ENDE);
+                default -> {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    @FXML
+    private void handlePauseStrokeAction(ActionEvent event) {
+        addPauseStroke();
+    }
+
+    @FXML
+    private void handleRepeatStartAction(ActionEvent event) {
+        addWiederholungszeichen(Wiederholungsart.ANFANG);
+    }
+
+    @FXML
+    private void handleRepeatEndAction(ActionEvent event) {
+        addWiederholungszeichen(Wiederholungsart.ENDE);
+    }
+
+    private void addPauseStroke() {
+        if (rowOffset >= 119) {
+            return;
+        }
+
+        markDocumentDirty();
+        // Der Pausenstrich bekommt bewusst keinen eigenen Grid-Slot. Er wird
+        // als freies Overlay genau in die Lücke zwischen zwei Noten gelegt.
+        Line pauseLine = new Line(0, 0, 0, 16);
+        pauseLine.setStroke(Color.BLACK);
+        pauseLine.setStrokeWidth(2.0);
+        pauseLine.setManaged(false);
+
+        PauseMarker marker = new PauseMarker(activeGridPane, pauseLine, columnOffset, rowOffset);
+        pauseLine.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.SECONDARY) {
+                showPauseContextMenu(marker, event.getScreenX(), event.getScreenY());
+                event.consume();
+            }
+        });
+        pauseMarkers.add(marker);
+        pauseOverlay.getChildren().add(pauseLine);
+        positionPauseMarker(marker);
+
+        // Der nächste Ton bleibt in derselben Spalte. Der Strich sitzt nur
+        // in der Lücke davor und darf deshalb keine Spalte verbrauchen.
+    }
+
+    private void positionPauseMarker(PauseMarker marker) {
+        GridPane grid = marker.grid;
+        grid.applyCss();
+        grid.layout();
+
+        Node previous = findGridSlotNode(grid, marker.column - 1, marker.row);
+        Node next = findGridSlotNode(grid, marker.column, marker.row);
+
+        double localX;
+        if (previous != null) {
+            Bounds bounds = previous.getBoundsInParent();
+            localX = bounds.getMaxX() + grid.getHgap() / 2.0;
+        } else if (next != null) {
+            Bounds bounds = next.getBoundsInParent();
+            localX = bounds.getMinX() - grid.getHgap() / 2.0;
+        } else {
+            localX = marker.column * (NOTE_SLOT_WIDTH + NOTE_GAP) - grid.getHgap() / 2.0;
+        }
+
+        double localY = 0;
+        Node reference = previous != null ? previous : next;
+        if (reference != null) {
+            // Etwas oberhalb des ersten Kreises wie in der Vorlage.
+            localY = reference.getBoundsInParent().getMinY() - 6;
+        }
+
+        Point2D parentPoint = grid.localToParent(localX, localY);
+        marker.line.setLayoutX(parentPoint.getX());
+        marker.line.setLayoutY(parentPoint.getY());
+    }
+
+    private Node findGridSlotNode(GridPane grid, int column, int row) {
+        if (column < 0) {
+            return null;
+        }
+        return grid.getChildren().stream()
+                .filter(node -> Objects.equals(GridPane.getColumnIndex(node), column))
+                .filter(node -> Objects.equals(GridPane.getRowIndex(node), row))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void removePauseMarker(GridPane grid, int column, int row) {
+        boolean removed = pauseMarkers.removeIf(marker -> {
+            boolean matches = marker.grid == grid && marker.column == column && marker.row == row;
+            if (matches) {
+                pauseOverlay.getChildren().remove(marker.line);
+            }
+            return matches;
+        });
+        if (removed) {
+            markDocumentDirty();
+        }
+    }
+
+    private void showPauseContextMenu(PauseMarker marker, double screenX, double screenY) {
+        if (activeContextMenu != null) {
+            activeContextMenu.hide();
+        }
+
+        ContextMenu menu = new ContextMenu();
+        MenuItem delete = new MenuItem("Pausenstrich löschen");
+        delete.setOnAction(event -> removePauseMarker(marker));
+        menu.getItems().add(delete);
+        activeContextMenu = menu;
+        menu.setOnHidden(event -> {
+            if (activeContextMenu == menu) {
+                activeContextMenu = null;
+            }
+        });
+        menu.show(pauseOverlay, screenX, screenY);
+    }
+
+    private void removePauseMarker(PauseMarker marker) {
+        if (pauseMarkers.remove(marker)) {
+            pauseOverlay.getChildren().remove(marker.line);
+        }
+    }
+
+    private void removePauseMarkersForGrid(GridPane grid) {
+        pauseMarkers.removeIf(marker -> {
+            if (marker.grid == grid) {
+                pauseOverlay.getChildren().remove(marker.line);
+                return true;
+            }
+            return false;
+        });
+    }
+
+    private void removeAnnotationsForGrid(GridPane grid) {
+        textAnnotations.removeIf(annotation -> {
+            if (annotation.grid == grid) {
+                annotationOverlay.getChildren().remove(annotation.text);
+                return true;
+            }
+            return false;
+        });
+        slurAnnotations.removeIf(annotation -> {
+            if (annotation.grid == grid) {
+                annotationOverlay.getChildren().remove(annotation.path);
+                return true;
+            }
+            return false;
+        });
+    }
+
+    private enum Wiederholungsart {
+        EINZELSTRICH,
+        DOPPELSTRICH,
+        GESTRICHELT,
+        ANFANG,
+        ENDE
+    }
+
+    private void addHorizontalRepeatLine(int startColumn, int startRow) {
+
+        if (startColumn < 0) {
+            return;
+        }
+
+        StackPane container = new StackPane();
+
+        container.setAlignment(Pos.TOP_LEFT);
+        container.setMinWidth(0);
+        container.setMaxWidth(Double.MAX_VALUE);
+
+        Line line = new Line();
+
+        line.setStroke(Color.BLACK);
+        line.setStrokeWidth(2.0);
+
+        line.setStartX(0);
+        line.setEndX(100); // wird nach dem Layout angepasst
+        line.setStartY(0);
+        line.setEndY(0);
+
+        container.getChildren().add(line);
+
+        activeGridPane.add(container, startColumn, startRow);
+
+        // Über zwei Spalten spannen
+        GridPane.setColumnSpan(container, 2);
+        GridPane.setRowSpan(container, 1);
+
+        GridPane.setHgrow(container, Priority.ALWAYS);
+
+        // Die Linie sitzt oberhalb der Noten
+        container.setTranslateY(-8);
+
+        // Nach dem Layout die tatsächliche Breite verwenden
+        container.layoutBoundsProperty().addListener((obs, oldBounds, newBounds) -> {
+            line.setEndX(newBounds.getWidth());
+        });
+    }
+
+    @FXML
+    private void handleWiederholungszeichenAction(ActionEvent event) {
+
+        ContextMenu menu = new ContextMenu();
+
+        MenuItem einzelstrich = new MenuItem("Normaler Strich |");
+        MenuItem doppelstrich = new MenuItem("Doppelstrich ||");
+        MenuItem gestrichelt = new MenuItem("Gestrichelter Strich ⋮");
+        MenuItem anfang = new MenuItem("Wiederholungsanfang :||");
+        MenuItem ende = new MenuItem("Wiederholungsende ||:");
+
+        einzelstrich.setOnAction(e -> addOrReplaceRepeatMarker(Wiederholungsart.EINZELSTRICH));
+        doppelstrich.setOnAction(e -> addOrReplaceRepeatMarker(Wiederholungsart.DOPPELSTRICH));
+        gestrichelt.setOnAction(e -> addOrReplaceRepeatMarker(Wiederholungsart.GESTRICHELT));
+        anfang.setOnAction(e -> addOrReplaceRepeatMarker(Wiederholungsart.ANFANG));
+        ende.setOnAction(e -> addOrReplaceRepeatMarker(Wiederholungsart.ENDE));
+
+        menu.getItems().addAll(
+                einzelstrich,
+                doppelstrich,
+                gestrichelt,
+                new SeparatorMenuItem(),
+                anfang,
+                ende
+        );
+
+        menu.show(Wiederholungszeichen, Wiederholungszeichen.getScene().getWindow().getX()
+                        + Wiederholungszeichen.localToScene(Wiederholungszeichen.getBoundsInLocal()).getMinX(),
+                Wiederholungszeichen.getScene().getWindow().getY()
+                        + Wiederholungszeichen.localToScene(Wiederholungszeichen.getBoundsInLocal()).getMaxY());
+    }
+
+    private void addOrReplaceRepeatMarker(Wiederholungsart art) {
+        markDocumentDirty();
+        if (selectedNoteContainers.isEmpty()) {
+            addWiederholungszeichen(art);
+            return;
+        }
+
+        Set<StackPane> selected = Set.copyOf(selectedNoteContainers);
+        Set<GridPane> affectedGrids = selected.stream()
+                .map(this::findNoteGrid)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        String replacementToken = "WIEDERHOLUNG|" + art.name();
+
+        for (GridPane grid : affectedGrids) {
+            Set<NoteSlot> selectedSlots = selected.stream()
+                    .filter(element -> findNoteGrid(element) == grid)
+                    .map(element -> new NoteSlot(GridPane.getColumnIndex(element), GridPane.getRowIndex(element)))
+                    .collect(java.util.stream.Collectors.toSet());
+            List<SerializedGridToken> replacedTokens = collectGridTokens(grid).stream()
+                    .map(token -> isSelectableToken(token.token()) &&
+                            selectedSlots.contains(new NoteSlot(token.column(), token.row()))
+                            ? new SerializedGridToken(replacementToken, token.column(), token.row(), false)
+                            : token)
+                    .toList();
+            rebuildGridCompact(grid, replacedTokens);
+        }
+        clearNoteSelection();
+    }
+
+    private void addWiederholungszeichen(Wiederholungsart art) {
+
+        if (rowOffset >= 119) {
+            return;
+        }
+
+        markDocumentDirty();
+        StackPane container = createRepeatMarker(art);
+        container.setUserData("WIEDERHOLUNG|" + art.name());
+        installNoteSelectionHandler(container, container, activeGridPane);
+
+        activeGridPane.add(container, columnOffset, rowOffset);
+        GridPane.setRowSpan(container, 9);
+
+        advanceGridPosition();
+
+        activeGridPane.setHgap(5.5);
+    }
+
+    /**
+     * Creates one self-contained repeat marker. The open Cis/Des fingering,
+     * the bar and the small directional cap stay in the same grid slot;
+     * otherwise the cap becomes a second grid child and moves neighbouring
+     * fingerings.
+     */
+    private StackPane createRepeatMarker(Wiederholungsart art) {
+        StackPane marker = new StackPane();
+        // Exakt die Breite einer normalen Note verwenden. So entsteht nach
+        // einem Wiederholungszeichen keine zusätzliche Spalte bzw. Lücke.
+        marker.setMinWidth(NOTE_SLOT_WIDTH);
+        marker.setPrefWidth(NOTE_SLOT_WIDTH);
+        marker.setMaxWidth(NOTE_SLOT_WIDTH);
+        marker.setMinHeight(87);
+        marker.setPrefHeight(87);
+        marker.setMaxHeight(87);
+        marker.setAlignment(Pos.TOP_CENTER);
+
+        marker.getChildren().add(createCisDesFingering());
+
+        if (art == Wiederholungsart.GESTRICHELT) {
+            addDashedLine(marker);
+        } else if (art == Wiederholungsart.DOPPELSTRICH) {
+            addVerticalLine(marker, -3);
+            addVerticalLine(marker, 3);
+        } else if (art == Wiederholungsart.ANFANG || art == Wiederholungsart.ENDE) {
+            // Der Wiederholungsstrich reicht über den ersten Kreis hinaus
+            // nach oben und trifft dort direkt auf den Querstrich.
+            addRepeatVerticalLine(marker);
+        } else {
+            addVerticalLine(marker, 0);
+        }
+
+        if (art == Wiederholungsart.ANFANG || art == Wiederholungsart.ENDE) {
+            addRepeatCap(marker, art == Wiederholungsart.ANFANG);
+        }
+        return marker;
+    }
+
+    private Pane createCisDesFingering() {
+        // Feste Zeichenfläche statt einer verschachtelten GridPane: Die
+        // Cystest-Löcher können damit keine Parent-Zeilen verschieben.
+        Pane fingering = new Pane();
+        fingering.setMinSize(NOTE_SLOT_WIDTH, 87);
+        fingering.setPrefSize(NOTE_SLOT_WIDTH, 87);
+        fingering.setMaxSize(NOTE_SLOT_WIDTH, 87);
+        fingering.setMouseTransparent(true);
+
+        boolean[] cisDesGriff = model.getGriff("Cis_Des");
+        double[] holeY = {4.5, 16.5, 28.5, 46.5, 58.5, 70.5, 82.5};
+        for (int i = 0; i < cisDesGriff.length; i++) {
+            Ellipse ellipse = createGriffEllipse(cisDesGriff[i], "Cis_Des|NORMAL");
+            ellipse.setLayoutX(NOTE_SLOT_WIDTH / 2.0);
+            ellipse.setLayoutY(holeY[i]);
+            fingering.getChildren().add(ellipse);
+        }
+        return fingering;
+    }
+
+    private Ellipse createGriffEllipse(boolean closed, String userData) {
+        Ellipse ellipse = new Ellipse(4.2, 4.5);
+        if (closed) {
+            ellipse.setFill(Color.BLACK);
+        } else {
+            ellipse.setFill(Color.WHITE);
+            ellipse.setStroke(Color.BLACK);
+            ellipse.setStrokeWidth(1.4);
+            ellipse.setRadiusX(ellipse.getRadiusX() - ellipse.getStrokeWidth() / 2);
+            ellipse.setRadiusY(ellipse.getRadiusY() - ellipse.getStrokeWidth() / 2);
+        }
+        ellipse.setUserData(userData);
+        return ellipse;
+    }
+
+    private void addRepeatCap(StackPane marker, boolean pointsRight) {
+        // The fixed-size overlay keeps the overhanging cap out of GridPane's
+        // column measurement, so neighbouring notes do not move.
+        Pane overlay = new Pane();
+        overlay.setMinSize(NOTE_SLOT_WIDTH, 0);
+        overlay.setPrefSize(NOTE_SLOT_WIDTH, 0);
+        overlay.setMaxSize(NOTE_SLOT_WIDTH, 0);
+        overlay.setMouseTransparent(true);
+
+        Line cap = pointsRight
+                ? new Line(NOTE_SLOT_WIDTH / 2.0, 0, NOTE_SLOT_WIDTH / 2.0 + 20, 0)
+                : new Line(NOTE_SLOT_WIDTH / 2.0 - 20, 0, NOTE_SLOT_WIDTH / 2.0, 0);
+        cap.setStroke(Color.BLACK);
+        cap.setStrokeWidth(2.0);
+        overlay.getChildren().add(cap);
+        StackPane.setAlignment(overlay, Pos.TOP_LEFT);
+        overlay.setTranslateY(-8);
+        marker.getChildren().add(overlay);
+    }
+
+    private void addVerticalLine(StackPane container, double offsetX) {
+
+        Line line = new Line(0, 2, 0, 85);
+
+        line.setStroke(Color.BLACK);
+        line.setStrokeWidth(2.0);
+
+        StackPane.setAlignment(line, Pos.TOP_CENTER);
+        StackPane.setMargin(line, new Insets(0, 0, 0, offsetX));
+
+        container.getChildren().add(line);
+    }
+
+    private void addRepeatVerticalLine(StackPane container) {
+        // Die Translation sorgt dafür, dass der Strich trotz StackPane-
+        // Layout wirklich oberhalb des ersten Kreises beginnt.
+        Line line = new Line(0, 0, 0, 95);
+        line.setStroke(Color.BLACK);
+        line.setStrokeWidth(2.0);
+        StackPane.setAlignment(line, Pos.TOP_CENTER);
+        line.setTranslateY(-10);
+        container.getChildren().add(line);
+    }
+
+    private void addDashedLine(StackPane container) {
+
+        Line line = new Line(0, 5, 0, 82);
+
+        line.setStroke(Color.BLACK);
+        line.setStrokeWidth(3.0);
+        line.getStrokeDashArray().addAll(7.0, 5.0);
+
+        StackPane.setAlignment(line, Pos.TOP_CENTER);
+
+        container.getChildren().add(line);
+    }
+
+    private void advanceGridPosition() {
+
+        if (columnOffset >= 40) {
+            columnOffset = 0;
+            rowOffset += 17;
+        } else {
+            columnOffset++;
+        }
+        syncActivePageOffset();
+    }
+
+    private void syncActivePageOffset() {
+        if (activeGridPane == Gridpane1) {
+            rowOffset1 = rowOffset;
+            columnOffset1 = columnOffset;
+        } else if (activeGridPane == Gridpane2) {
+            rowOffset2 = rowOffset;
+            columnOffset2 = columnOffset;
+        }
     }
 
     private void setupAllNoteButtons() {
@@ -122,7 +1225,7 @@ public class Controller {
             String noteName = button.getText();
 
             if (event.getButton() == MouseButton.PRIMARY) {
-                addNote(noteName, NoteModifier.NORMAL);
+                addOrReplaceNote(noteName, NoteModifier.NORMAL);
             }
 
             else if (event.getButton() == MouseButton.SECONDARY) {
@@ -146,21 +1249,19 @@ public class Controller {
         MenuItem kurz = new MenuItem("Kurz (•)");
         MenuItem feste = new MenuItem("Feste (f)");
 
-        lang.setOnAction(e -> addNote(baseNote, NoteModifier.LANG));
-        kurz.setOnAction(e -> addNote(baseNote, NoteModifier.KURZ));
-        feste.setOnAction(e -> addNote(baseNote, NoteModifier.FESTE));
+        lang.setOnAction(e -> addOrReplaceNote(baseNote, NoteModifier.LANG));
+        kurz.setOnAction(e -> addOrReplaceNote(baseNote, NoteModifier.KURZ));
+        feste.setOnAction(e -> addOrReplaceNote(baseNote, NoteModifier.FESTE));
         menu.getItems().addAll(lang, kurz, feste);
         if (allowOktav) {
             MenuItem oktav = new MenuItem("Oktav (x)");
             MenuItem oktavLang = new MenuItem("Oktav + Lang (x + -)");
             MenuItem oktavKurz = new MenuItem("Oktav + Kurz (x + •)");
 
-            oktavLang.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV_LANG));
-            oktavKurz.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV_KURZ));
+            oktavLang.setOnAction(e -> addOrReplaceNote(baseNote, NoteModifier.OKTAV_LANG));
+            oktavKurz.setOnAction(e -> addOrReplaceNote(baseNote, NoteModifier.OKTAV_KURZ));
 
-            oktav.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV));
-            oktavLang.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV_LANG));
-            oktavKurz.setOnAction(e -> addNote(baseNote, NoteModifier.OKTAV_KURZ));
+            oktav.setOnAction(e -> addOrReplaceNote(baseNote, NoteModifier.OKTAV));
 
 
             menu.getItems().addAll(
@@ -174,6 +1275,320 @@ public class Controller {
         menu.setOnHidden(e -> activeContextMenu = null);
 
         menu.show(source, x, y);
+    }
+
+    /**
+     * Fügt eine neue Note ein oder ersetzt die zuvor auf der Seite
+     * ausgewählte Note. Die Auswahl wird nach dem Ersetzen aufgehoben.
+     */
+    private void addOrReplaceNote(String baseNote, NoteModifier modifier) {
+        if (selectedNoteContainer == null) {
+            addNote(baseNote, modifier);
+            return;
+        }
+        replaceSelectedNote(baseNote, modifier);
+    }
+
+    private void selectNote(StackPane noteContainer, GridPane grid) {
+        if (selectedNoteContainer == noteContainer) {
+            clearNoteSelection();
+            return;
+        }
+
+        setSelectedNotes(List.of(noteContainer));
+        selectedNoteGrid = grid;
+    }
+
+    private void setSelectedNotes(Collection<StackPane> notes) {
+        clearNoteSelection();
+        selectedNoteContainers.addAll(notes);
+        if (selectedNoteContainers.isEmpty()) {
+            return;
+        }
+        selectedNoteContainer = selectedNoteContainers.get(0);
+        selectedNoteContainer.setEffect(new DropShadow(8, Color.web("#1976D2")));
+        for (StackPane note : selectedNoteContainers) {
+            if (note != selectedNoteContainer) {
+                note.setEffect(new DropShadow(8, Color.web("#1976D2")));
+            }
+        }
+        updateEditSelectionLabel();
+        if (selectedNoteContainers.size() >= 2) {
+            updateSlurSelectionLabel(selectedNoteContainers.size() +
+                    " Noten markiert – jetzt Bogen einfügen.");
+        }
+    }
+
+    private void installNoteSelectionHandler(Node node, StackPane noteContainer, GridPane grid) {
+        node.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY) {
+                selectNote(noteContainer, grid);
+                event.consume();
+            } else if (event.getButton() == MouseButton.SECONDARY) {
+                if (!selectedNoteContainers.contains(noteContainer)) {
+                    setSelectedNotes(List.of(noteContainer));
+                }
+                showSelectionContextMenu(event.getScreenX(), event.getScreenY());
+                event.consume();
+            }
+        });
+    }
+
+    private void showSelectionContextMenu(double screenX, double screenY) {
+        if (activeContextMenu != null) {
+            activeContextMenu.hide();
+        }
+
+        ContextMenu menu = new ContextMenu();
+        MenuItem clear = new MenuItem("Auswahl aufheben");
+        MenuItem delete = new MenuItem("Ausgewählte Elemente löschen");
+        MenuItem slur = new MenuItem("Bogen über Auswahl");
+
+        clear.setOnAction(event -> clearNoteSelection());
+        delete.setOnAction(event -> deleteSelectedNotesAndCompact());
+        slur.setDisable(selectedNoteContainers.size() < 2 ||
+                selectedNoteContainers.stream().anyMatch(this::isRepeatMarker));
+        slur.setOnAction(this::handleAddSlurAction);
+
+        menu.getItems().addAll(clear, delete, new SeparatorMenuItem(), slur);
+        activeContextMenu = menu;
+        menu.setOnHidden(event -> activeContextMenu = null);
+        menu.show(pageCanvas, screenX, screenY);
+    }
+
+    private void updateEditSelectionLabel() {
+        if (editSelectionLabel == null) {
+            return;
+        }
+        if (selectedNoteContainer == null) {
+            editSelectionLabel.setText("Keine Note ausgewählt");
+            editSelectionLabel.setTextFill(Color.web("#607D8B"));
+            return;
+        }
+        if (selectedNoteContainers.size() > 1) {
+            editSelectionLabel.setText("Ausgewählt: " + selectedNoteContainers.size() + " Elemente");
+        } else {
+            Object token = selectedNoteContainer.getUserData();
+            editSelectionLabel.setText("Ausgewählt: " + (token == null ? "Note" : token.toString().replace('|', ' ')));
+        }
+        editSelectionLabel.setTextFill(Color.web("#1976D2"));
+    }
+
+    @FXML
+    private void handleClearNoteSelectionAction(ActionEvent event) {
+        clearNoteSelection();
+    }
+
+    @FXML
+    private void handleDeleteSelectedNotesAction(ActionEvent event) {
+        deleteSelectedNotesAndCompact();
+    }
+
+    private void deleteSelectedNotesAndCompact() {
+        if (selectedNoteContainers.isEmpty()) {
+            return;
+        }
+
+        markDocumentDirty();
+
+        Set<StackPane> selected = Set.copyOf(selectedNoteContainers);
+        Set<GridPane> affectedGrids = selected.stream()
+                .map(this::findNoteGrid)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+        for (GridPane grid : affectedGrids) {
+            Set<NoteSlot> selectedSlots = selected.stream()
+                    .filter(note -> findNoteGrid(note) == grid)
+                    .map(note -> new NoteSlot(GridPane.getColumnIndex(note), GridPane.getRowIndex(note)))
+                    .collect(java.util.stream.Collectors.toSet());
+            List<SerializedGridToken> remainingTokens = collectGridTokens(grid).stream()
+                    .filter(token -> !isSelectableToken(token.token()) ||
+                            !selectedSlots.contains(new NoteSlot(token.column(), token.row())))
+                    .toList();
+            rebuildGridCompact(grid, remainingTokens);
+        }
+        clearNoteSelection();
+    }
+
+    private boolean isNoteToken(String token) {
+        return token != null && token.contains("|") && !token.startsWith("WIEDERHOLUNG|");
+    }
+
+    private boolean isSelectableToken(String token) {
+        return isNoteToken(token) || (token != null && token.startsWith("WIEDERHOLUNG|"));
+    }
+
+    private List<SerializedGridToken> collectGridTokens(GridPane grid) {
+        List<SerializedGridToken> tokens = new ArrayList<>();
+        for (Node node : grid.getChildren()) {
+            if (!(node instanceof StackPane)) {
+                continue;
+            }
+            String token = tokenForGridNode(node);
+            Integer column = GridPane.getColumnIndex(node);
+            Integer row = GridPane.getRowIndex(node);
+            if (token != null && column != null && row != null) {
+                tokens.add(new SerializedGridToken(token, column, row, false));
+            }
+        }
+        for (PauseMarker marker : pauseMarkers) {
+            if (marker.grid == grid) {
+                tokens.add(new SerializedGridToken("PAUSENSTRICH", marker.column, marker.row, true));
+            }
+        }
+        tokens.sort(Comparator.comparingInt(SerializedGridToken::row)
+                .thenComparingInt(SerializedGridToken::column)
+                .thenComparingInt(token -> token.pause() ? 0 : 1));
+        return tokens;
+    }
+
+    private void rebuildGridCompact(GridPane grid, List<SerializedGridToken> tokens) {
+        GridPane oldActiveGrid = activeGridPane;
+        int oldRowOffset = rowOffset;
+        int oldColumnOffset = columnOffset;
+
+        removePauseMarkersForGrid(grid);
+        removeSlursForGrid(grid);
+        grid.getChildren().clear();
+
+        activeGridPane = grid;
+        rowOffset = 1;
+        columnOffset = 0;
+        syncActivePageOffset();
+        for (SerializedGridToken token : tokens) {
+            appendSerializedToken(token.token());
+        }
+
+        if (oldActiveGrid != grid) {
+            activeGridPane = oldActiveGrid;
+            rowOffset = oldRowOffset;
+            columnOffset = oldColumnOffset;
+            if (oldActiveGrid != null) {
+                syncActivePageOffset();
+            }
+        }
+    }
+
+    private void appendSerializedToken(String token) {
+        if (restoreSpecialToken(token)) {
+            syncActivePageOffset();
+            return;
+        }
+
+        String[] parts = token.split("\\|", 2);
+        String baseNote = parts[0];
+        NoteModifier modifier = NoteModifier.NORMAL;
+        if (parts.length == 2) {
+            try {
+                modifier = NoteModifier.valueOf(parts[1]);
+            } catch (IllegalArgumentException ignored) {
+                // Alte oder unbekannte Dateien werden als normale Note geladen.
+            }
+        }
+        addNote(baseNote, modifier);
+    }
+
+    private void removeSlursForGrid(GridPane grid) {
+        slurAnnotations.removeIf(annotation -> {
+            if (annotation.grid == grid) {
+                annotationOverlay.getChildren().remove(annotation.path);
+                return true;
+            }
+            return false;
+        });
+    }
+
+    private void clearNoteSelection() {
+        for (StackPane note : selectedNoteContainers) {
+            note.setEffect(null);
+        }
+        selectedNoteContainers.clear();
+        selectedNoteContainer = null;
+        selectedNoteGrid = null;
+        updateEditSelectionLabel();
+    }
+
+    private void replaceSelectedNote(String baseNote, NoteModifier modifier) {
+        List<SelectedNoteTarget> targets = selectedNoteContainers.stream()
+                .map(note -> new SelectedNoteTarget(
+                        note,
+                        findNoteGrid(note),
+                        GridPane.getColumnIndex(note),
+                        GridPane.getRowIndex(note)))
+                .filter(target -> target.grid() != null && target.column() != null &&
+                        target.row() != null && target.row() < 119)
+                .toList();
+        if (targets.isEmpty()) {
+            addNote(baseNote, modifier);
+            return;
+        }
+
+        // Den Einfügezeiger und beide Seitenpositionen sichern: Das Ersetzen
+        // darf nicht beeinflussen, wo die nächste neue Note landet.
+        GridPane oldActiveGrid = activeGridPane;
+        int oldRowOffset = rowOffset;
+        int oldColumnOffset = columnOffset;
+        int oldRowOffset1 = rowOffset1;
+        int oldColumnOffset1 = columnOffset1;
+        int oldRowOffset2 = rowOffset2;
+        int oldColumnOffset2 = columnOffset2;
+
+        for (SelectedNoteTarget target : targets) {
+            removeNoteSlot(target.grid(), target.container(), target.column(), target.row());
+        }
+        clearNoteSelection();
+
+        for (SelectedNoteTarget target : targets) {
+            activeGridPane = target.grid();
+            rowOffset = target.row();
+            columnOffset = target.column();
+            addNote(baseNote, modifier);
+        }
+
+        activeGridPane = oldActiveGrid;
+        rowOffset = oldRowOffset;
+        columnOffset = oldColumnOffset;
+        rowOffset1 = oldRowOffset1;
+        columnOffset1 = oldColumnOffset1;
+        rowOffset2 = oldRowOffset2;
+        columnOffset2 = oldColumnOffset2;
+        if (oldActiveGrid != null) {
+            syncActivePageOffset();
+        }
+    }
+
+    private GridPane findNoteGrid(StackPane noteContainer) {
+        if (Gridpane1.getChildren().contains(noteContainer)) {
+            return Gridpane1;
+        }
+        if (Gridpane2.getChildren().contains(noteContainer)) {
+            return Gridpane2;
+        }
+        return null;
+    }
+
+    private record SelectedNoteTarget(StackPane container, GridPane grid,
+                                      Integer column, Integer row) {
+    }
+
+    private void removeNoteSlot(GridPane grid, StackPane noteContainer, int column, int row) {
+        grid.getChildren().removeIf(node -> {
+            if (node == noteContainer) {
+                return true;
+            }
+            Integer nodeColumn = GridPane.getColumnIndex(node);
+            Integer nodeRow = GridPane.getRowIndex(node);
+            if (!Objects.equals(nodeColumn, column) || nodeRow == null ||
+                    nodeRow < row || nodeRow > row + 8) {
+                return false;
+            }
+            // Ellipsen und das optionale Oktav-X gehören zu diesem Notenslot.
+            // Wiederholungszeichen tragen eigene UserData und bleiben erhalten.
+            return node instanceof Ellipse ||
+                    (node instanceof StackPane && node.getUserData() == null);
+        });
+        removePauseMarker(grid, column, row);
     }
 
 
@@ -247,12 +1662,14 @@ public class Controller {
     }
 
     private void styleButtonsOtherButtons(Button button) {
+        String emphasis = button == deleteAllNotesButton ? "-fx-font-weight: bold; " : "";
         button.setStyle("-fx-background-color: #E0E0E0; " +  // hellgrauer Hintergrund
                 "-fx-border-color: #B0B0B0; " +      // grauer Rand
                 "-fx-border-width: 1px; " +
                 "-fx-font-size: 14px; " +            // größere Schrift
                 "-fx-text-fill: #333333; " +         // dunkle Schriftfarbe
                 "-fx-background-radius: 6px; " +     // abgerundete Ecken
+                emphasis +
                 "-fx-padding: 6 12;");               // etwas Innenabstand
         button.setOnMouseEntered(e -> button.setStyle(
                 "-fx-background-color: #D0D0D0; " +
@@ -260,30 +1677,53 @@ public class Controller {
                         "-fx-font-size: 14px; " +
                         "-fx-text-fill: #222222; " +
                         "-fx-background-radius: 6px;" +
+                        emphasis +
                         "-fx-padding: 6 12;"
         ));
         button.setPrefWidth(150);
         button.setPrefHeight(40);
     }
 
+    private void styleHelpButton(Button button) {
+        String normalStyle = "-fx-background-color: transparent; " +
+                "-fx-border-color: transparent; " +
+                "-fx-text-fill: #1565C0; " +
+                "-fx-font-size: 13px; " +
+                "-fx-font-weight: bold; " +
+                "-fx-underline: true; " +
+                "-fx-padding: 2 4; " +
+                "-fx-alignment: CENTER_LEFT; " +
+                "-fx-cursor: hand;";
+        String hoverStyle = normalStyle.replace("transparent;", "#E3F2FD;");
+        button.setStyle(normalStyle);
+        button.setPrefWidth(150);
+        button.setPrefHeight(28);
+        button.setOnMouseEntered(event -> button.setStyle(hoverStyle));
+        button.setOnMouseExited(event -> button.setStyle(normalStyle));
+    }
+
     private void styleButtonsNotes(Button button) {
         button.setStyle("-fx-background-color: #E0E0E0; " +  // hellgrauer Hintergrund
                 "-fx-border-color: #B0B0B0; " +      // grauer Rand
                 "-fx-border-width: 1px; " +
-                "-fx-font-size: 14px; " +            // größere Schrift
+                "-fx-font-size: 11px; " +
                 "-fx-text-fill: #333333; " +         // dunkle Schriftfarbe
                 "-fx-background-radius: 6px; " +     // abgerundete Ecken
-                "-fx-padding: 6 12;");               // etwas Innenabstand
+                "-fx-padding: 2 3 3 3;");
         button.setOnMouseEntered(e -> button.setStyle(
                 "-fx-background-color: #D0D0D0; " +
                         "-fx-border-color: #A0A0A0; " +
-                        "-fx-font-size: 14px; " +
+                        "-fx-font-size: 11px; " +
                         "-fx-text-fill: #222222; " +
                         "-fx-background-radius: 6px;" +
-                        "-fx-padding: 6 12;"
+                        "-fx-padding: 2 3 3 3;"
         ));
-        button.setPrefWidth(80);
-        button.setPrefHeight(40);
+        // Kompakte Notenkacheln: die Beschriftung bleibt lesbar, die
+        // Notenbuttons nehmen aber deutlich weniger Platz ein.
+        button.setMinWidth(68);
+        button.setPrefWidth(68);
+        button.setMaxWidth(68);
+        button.setPrefHeight(100);
         button.setOnMouseExited(e -> styleButtonsNotes(button));
         pageIndicator.setBackground(new Background(
                 new BackgroundFill(Color.LIGHTGRAY, new CornerRadii(5), Insets.EMPTY)));
@@ -291,24 +1731,39 @@ public class Controller {
     }
 
     @FXML
-    private void handleSwitchGrid(ActionEvent event) {
-        if (activeGridPane == Gridpane1) {
-            rowOffset1 = rowOffset;
-            columnOffset1 = columnOffset;
+    private void handleSelectLeftPage(ActionEvent event) {
+        selectPage(Gridpane1);
+    }
 
-            activeGridPane = Gridpane2;
+    @FXML
+    private void handleSelectRightPage(ActionEvent event) {
+        selectPage(Gridpane2);
+    }
 
-            rowOffset = rowOffset2;
-            columnOffset = columnOffset2;
-        } else {
-            rowOffset2 = rowOffset;
-            columnOffset2 = columnOffset;
+    private void selectPage(GridPane targetGrid) {
+        if (targetGrid == null) {
+            return;
+        }
 
-            activeGridPane = Gridpane1;
+        if (activeGridPane != null) {
+            if (activeGridPane == Gridpane1) {
+                rowOffset1 = rowOffset;
+                columnOffset1 = columnOffset;
+            } else {
+                rowOffset2 = rowOffset;
+                columnOffset2 = columnOffset;
+            }
+        }
 
+        activeGridPane = targetGrid;
+        if (targetGrid == Gridpane1) {
             rowOffset = rowOffset1;
             columnOffset = columnOffset1;
+        } else {
+            rowOffset = rowOffset2;
+            columnOffset = columnOffset2;
         }
+
         updatePageIndicatorPosition();
     }
 
@@ -316,47 +1771,43 @@ public class Controller {
         if (activeGridPane == Gridpane1) {
             pageIndicator.setText("Linke Seite");
             pageIndicator.setTextFill(Color.BLUE);
-            pageIndicator.setLayoutX(300);
-            pageIndicator.setLayoutY(5);
         } else {
             pageIndicator.setText("Rechte Seite");
             pageIndicator.setTextFill(Color.RED);
-            pageIndicator.setLayoutX(930);
-            pageIndicator.setLayoutY(5);
         }
 
-        pageIndicator.toFront();
+        updatePageButtonStyles();
+        updateDeleteAllNotesButtonText();
     }
 
-    @FXML
-    private void handleWOffenAction(ActionEvent event) {
-        // Überprüfe, ob wir maximal 119 Zeilen erreicht haben
-        if (rowOffset >= 119) {
-            return; // Keine weiteren Noten zeichnen, wenn die maximale Zeilenanzahl erreicht ist
+    private void updateDeleteAllNotesButtonText() {
+        if (deleteAllNotesButton == null || activeGridPane == null) {
+            return;
         }
 
-        // Zeichne den vertikalen Strich
-        javafx.scene.shape.Line line = new javafx.scene.shape.Line();
-        line.setStartX(0);
-        line.setStartY(5);
-        line.setEndX(0);
-        line.setEndY(85); // Länge des Strichs, passend für 7 Zeilen
-        line.setStroke(Color.BLACK);
-        line.setStrokeWidth(2.0);
+        String pageName = activeGridPane == Gridpane1 ? "linken" : "rechten";
+        deleteAllNotesButton.setText("Alle Noten der " + pageName + " Seite löschen");
+    }
 
-        // Füge die Linie zur GridPane hinzu (die gesamte Spalte, 7 Zeilen hoch)
-        activeGridPane.add(line, columnOffset, rowOffset); // Positioniere in der aktuellen Spalte und Zeile
-        GridPane.setRowSpan(line, 9); // Mache die Linie 7 Zeilen hoch
+    private void stylePageButton(Button button) {
+        button.setPrefWidth(145);
+        button.setPrefHeight(38);
+        button.setStyle("-fx-background-color: #ECEFF1; -fx-border-color: #CFD8DC; " +
+                "-fx-border-radius: 6px; -fx-background-radius: 6px; -fx-font-weight: bold;");
+    }
 
-        // Überprüfe, ob wir maximal 40 Spalten erreicht haben
-        if (columnOffset >= 40) {
-            columnOffset = 0;  // Zurücksetzen, wenn 40 Spalten erreicht sind
-            rowOffset += 17;   // Nächste Zeile, dabei nach 40 Spalten um 17 Zeilen erhöhen
-        } else {
-            columnOffset++;    // Andernfalls die Spalte weiter erhöhen
+    private void updatePageButtonStyles() {
+        if (leftPageButton == null || rightPageButton == null || activeGridPane == null) {
+            return;
         }
 
-        activeGridPane.setHgap(5.5);
+        String selectedStyle = "-fx-background-color: #1976D2; -fx-text-fill: white; " +
+                "-fx-border-color: #1565C0; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-font-weight: bold;";
+        String normalStyle = "-fx-background-color: #ECEFF1; -fx-text-fill: #263238; " +
+                "-fx-border-color: #CFD8DC; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-font-weight: bold;";
+
+        leftPageButton.setStyle(activeGridPane == Gridpane1 ? selectedStyle : normalStyle);
+        rightPageButton.setStyle(activeGridPane == Gridpane2 ? selectedStyle : normalStyle);
     }
 
     @FXML
@@ -371,7 +1822,10 @@ public class Controller {
 
         Optional<ButtonType> result = alert.showAndWait();
         if (result.isPresent() && result.get() == ButtonType.OK) {
+            markDocumentDirty();
             if (activeGridPane == Gridpane1) {
+                removePauseMarkersForGrid(Gridpane1);
+                removeAnnotationsForGrid(Gridpane1);
                 Gridpane1.getChildren().clear();
                 notesSeite1.clear();
                 rowOffset1 = 1;
@@ -379,6 +1833,8 @@ public class Controller {
                 rowOffset = rowOffset1;
                 columnOffset = columnOffset1;
             } else {
+                removePauseMarkersForGrid(Gridpane2);
+                removeAnnotationsForGrid(Gridpane2);
                 Gridpane2.getChildren().clear();
                 notesSeite2.clear();
                 rowOffset2 = 1;
@@ -386,15 +1842,31 @@ public class Controller {
                 rowOffset = rowOffset2;
                 columnOffset = columnOffset2;
             }
+            clearNoteSelection();
+            syncActivePageOffset();
         }
     }
 
     @FXML
     private void handleDeleteLastNoteAction(ActionEvent event) {
+        // Ein Pausenstrich verbraucht keine Spalte. Wenn er das letzte
+        // eingefügte Element ist, liegt der Cursor daher noch genau auf ihm.
+        boolean pauseAtCursor = pauseMarkers.stream().anyMatch(marker ->
+                marker.grid == activeGridPane &&
+                        marker.column == columnOffset &&
+                        marker.row == rowOffset);
+        if (pauseAtCursor) {
+            removePauseMarker(activeGridPane, columnOffset, rowOffset);
+            syncActivePageOffset();
+            return;
+        }
+
         // Prüfen, ob überhaupt etwas zu löschen ist
         if (rowOffset == 0 && columnOffset == 0) {
             return; // Bereits ganz am Anfang → nichts mehr zu löschen
         }
+
+        markDocumentDirty();
 
         // Spalten und Zeilen zuerst korrekt zurücksetzen
         if (columnOffset > 0) {
@@ -421,15 +1893,24 @@ public class Controller {
                     GridPane.getRowIndex(node) != null &&
                             GridPane.getColumnIndex(node) != null &&
                             GridPane.getRowIndex(node) == rowToDelete &&
-                            GridPane.getColumnIndex(node) == colToDelete
+                    GridPane.getColumnIndex(node) == colToDelete
             );
         }
+        removePauseMarker(activeGridPane, columnOffset, rowOffset);
+        if (selectedNoteGrid == activeGridPane &&
+                selectedNoteContainer != null &&
+                !activeGridPane.getChildren().contains(selectedNoteContainer)) {
+            clearNoteSelection();
+        }
+        syncActivePageOffset();
     }
 
     // Zeichne die neue Note in einer neuen Spalte (basierend auf columnOffset und rowOffset)
     private void drawGriffOnGrid(boolean[] griff, String baseNote, String finalNoteName, NoteModifier modifier) {
 
         if (rowOffset >= 119) return;
+
+        markDocumentDirty();
 
         StackPane noteContainer = null;
         StackPane oktavContainer = null;
@@ -454,6 +1935,8 @@ public class Controller {
             if (i == 0) {
                 noteContainer = new StackPane();
                 noteContainer.setAlignment(Pos.CENTER);
+                noteContainer.setUserData(baseNote + "|" + modifier.name());
+                installNoteSelectionHandler(noteContainer, noteContainer, activeGridPane);
                 noteContainer.getChildren().add(ellipse);
 
                 // Nur Punkt/Strich/Feste über erstem Kreis
@@ -473,6 +1956,7 @@ public class Controller {
                     // Position: zwischen 3 und 4, etwas weiter unten
                     GridPane.setMargin(oktavContainer, new Insets(3.5, 0, 0, 0)); // Verschiebung nach unten
                     activeGridPane.add(oktavContainer, columnOffset, rowOffset + 5);
+                    installNoteSelectionHandler(oktavContainer, noteContainer, activeGridPane);
                 }
                 int targetRow = (i < 3) ? rowOffset + i : rowOffset + i + 2;
                 activeGridPane.add(ellipse, columnOffset, targetRow);
@@ -480,14 +1964,12 @@ public class Controller {
                 int targetRow = (i < 3) ? rowOffset + i : rowOffset + i + 2;
                 activeGridPane.add(ellipse, columnOffset, targetRow);
             }
+
+            // Alle Kreise einer Note sind auswählbar, nicht nur der oberste.
+            installNoteSelectionHandler(ellipse, noteContainer, activeGridPane);
         }
 
-        if (columnOffset >= 40) {
-            columnOffset = 0;
-            rowOffset += 17;
-        } else {
-            columnOffset++;
-        }
+        advanceGridPosition();
 
         activeGridPane.setHgap(5.5);
     }
@@ -499,34 +1981,33 @@ public class Controller {
         List<Node> insertedNodes = new ArrayList<>();
 
         while (row < 119) {
-            for (int i = 0; i < cisDesGriff.length; i++) {
-                javafx.scene.shape.Ellipse ellipse = new javafx.scene.shape.Ellipse(4.2, 4.5);
-                if (cisDesGriff[i]) {
-                    ellipse.setFill(Color.BLACK);
-                } else {
-                    ellipse.setFill(Color.WHITE);
-                    ellipse.setStroke(Color.BLACK);
-                    ellipse.setStrokeWidth(1.4);
-                    ellipse.setRadiusX(ellipse.getRadiusX() - (ellipse.getStrokeWidth() / 2));
-                    ellipse.setRadiusY(ellipse.getRadiusY() - (ellipse.getStrokeWidth() / 2));
-                }
-                ellipse.setUserData("Cis_Des|NORMAL");
+            int finalRow = row;
+            int finalCol = col;
+            boolean slotOccupied = grid.getChildren().stream().anyMatch(node ->
+                    GridPane.getColumnIndex(node) != null &&
+                            GridPane.getRowIndex(node) != null &&
+                            GridPane.getColumnIndex(node) == finalCol &&
+                            GridPane.getRowIndex(node) == finalRow
+            );
 
-                int targetRow = (i < 3) ? row + i : row + i + 2;
-                int finalCol = col;
-                boolean cellOccupied = grid.getChildren().stream().anyMatch(node ->
-                        GridPane.getColumnIndex(node) != null &&
-                                GridPane.getRowIndex(node) != null &&
-                                GridPane.getColumnIndex(node) == finalCol &&
-                                GridPane.getRowIndex(node) == targetRow
-                );
+            if (!slotOccupied) {
+                for (int i = 0; i < cisDesGriff.length; i++) {
+                    javafx.scene.shape.Ellipse ellipse = new javafx.scene.shape.Ellipse(4.2, 4.5);
+                    if (cisDesGriff[i]) {
+                        ellipse.setFill(Color.BLACK);
+                    } else {
+                        ellipse.setFill(Color.WHITE);
+                        ellipse.setStroke(Color.BLACK);
+                        ellipse.setStrokeWidth(1.4);
+                        ellipse.setRadiusX(ellipse.getRadiusX() - (ellipse.getStrokeWidth() / 2));
+                        ellipse.setRadiusY(ellipse.getRadiusY() - (ellipse.getStrokeWidth() / 2));
+                    }
+                    ellipse.setUserData("Cis_Des|NORMAL");
 
-                if (!cellOccupied) {
+                    int targetRow = (i < 3) ? row + i : row + i + 2;
                     grid.add(ellipse, col, targetRow);
                     insertedNodes.add(ellipse);
                 }
-
-                insertedNodes.add(ellipse);
             }
 
             if (col >= 40) {
@@ -544,103 +2025,306 @@ public class Controller {
     //Drucken von Noten
     @FXML
     private void handlePrintGridPaneAction(ActionEvent event) {
-        List<Node> tempNodes1 = fillRemainingRowsWithCisDes(Gridpane1, rowOffset1, columnOffset1);
-        List<Node> tempNodes2 = fillRemainingRowsWithCisDes(Gridpane2, rowOffset2, columnOffset2);
+        syncActivePageOffset();
+        // Von vorne über beide Seiten laufen: jede leere Position erhält nur
+        // für den Druck eine Cystest-Note, belegte Positionen bleiben unverändert.
+        List<Node> tempNodes1 = fillRemainingRowsWithCisDes(Gridpane1, 1, 0);
+        List<Node> tempNodes2 = fillRemainingRowsWithCisDes(Gridpane2, 1, 0);
+        Map<TextField, String> prompts = hidePromptTextsForPrinting();
 
-        WritableImage snapshot = printArea.snapshot(null, null);
+        try {
+            // Immer die feste DIN-A4-Seitenfläche drucken, nicht den variablen
+            // Bildschirmbereich. Dadurch entstehen keine Randflächen vom UI.
+            pageCanvas.applyCss();
+            pageCanvas.layout();
+            WritableImage snapshot = pageCanvas.snapshot(null, null);
 
-        Printer printer = Printer.getDefaultPrinter();
-        if (printer == null) {
-            System.out.println("Kein Drucker gefunden.");
-            return;
-        }
-
-        PageLayout layout = printer.createPageLayout(
-                Paper.A4,
-                PageOrientation.LANDSCAPE,
-                0, 0, 0, 0
-        );
-
-        javafx.print.PrinterJob job = javafx.print.PrinterJob.createPrinterJob();
-
-        if (job != null && job.showPrintDialog(printGridPaneButton.getScene().getWindow())) {
-            ImageView printView = new ImageView(snapshot);
-            printView.setFitWidth(layout.getPrintableWidth());
-            printView.setFitHeight(layout.getPrintableHeight());
-            printView.setPreserveRatio(true);
-
-            boolean success = job.printPage(layout, printView);
-            if (success) {
-                job.endJob();
+            Printer printer = Printer.getDefaultPrinter();
+            if (printer == null) {
+                System.out.println("Kein Drucker gefunden.");
+                return;
             }
-        }
 
-        // 🧹 Temp-Noten aus beiden Grids löschen
-        Gridpane1.getChildren().removeAll(tempNodes1);
-        Gridpane2.getChildren().removeAll(tempNodes2);
+            PageLayout layout = printer.createPageLayout(
+                    Paper.A4,
+                    PageOrientation.LANDSCAPE,
+                    0, 0, 0, 0
+            );
 
-        // Aktive Offsets je nach Grid
-        if (activeGridPane == Gridpane1) {
-            rowOffset1 = rowOffset;
-            columnOffset1 = columnOffset;
-        } else {
-            rowOffset2 = rowOffset;
-            columnOffset2 = columnOffset;
+            javafx.print.PrinterJob job = javafx.print.PrinterJob.createPrinterJob();
+
+            if (job != null) {
+                // Windows-Druckdialoge starten teilweise mit Hochformat. Das
+                // Layout deshalb vor und nach dem Dialog nochmals fest vorgeben.
+                job.getJobSettings().setPageLayout(layout);
+            }
+
+            if (job != null && job.showPrintDialog(printGridPaneButton.getScene().getWindow())) {
+                job.getJobSettings().setPageLayout(layout);
+                ImageView printView = new ImageView(snapshot);
+                printView.setFitWidth(layout.getPrintableWidth());
+                printView.setFitHeight(layout.getPrintableHeight());
+                printView.setPreserveRatio(false);
+                printView.setSmooth(true);
+
+                boolean success = job.printPage(layout, printView);
+                if (success) {
+                    job.endJob();
+                }
+            }
+        } finally {
+            // Die Cystest-Noten existieren nur während des Drucks - auch bei
+            // Abbruch, fehlendem Drucker oder einem Druckfehler werden sie entfernt.
+            Gridpane1.getChildren().removeAll(tempNodes1);
+            Gridpane2.getChildren().removeAll(tempNodes2);
+            restorePromptTexts(prompts);
+            syncActivePageOffset();
         }
     }
 
     @FXML
     private void handleSaveToFile(ActionEvent event) {
+        saveToFile(printGridPaneButton.getScene().getWindow());
+    }
+
+    private boolean saveToFile(Window owner) {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Speichern unter");
-        File file = fileChooser.showSaveDialog(printGridPaneButton.getScene().getWindow());
+        File file = fileChooser.showSaveDialog(owner);
 
-        if (file != null) {
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
-                // Schreibe pro Note genau ein Mal: nur StackPanes mit einer Ellipse (erste Kreis)
-                for (Node node : Gridpane1.getChildren()) {
-                    if (node instanceof StackPane sp) {
-                        Ellipse found = null;
-                        for (Node child : sp.getChildren()) {
-                            if (child instanceof Ellipse e) {
-                                found = e;
-                                break;
-                            }
-                        }
-                        if (found != null) {
-                            Object data = found.getUserData();
-                            if (data != null) {
-                                writer.write("Seite1;" + data);
-                                writer.newLine();
-                            }
-                        }
-                    }
-                }
+        if (file == null) {
+            return false;
+        }
 
-                for (Node node : Gridpane2.getChildren()) {
-                    if (node instanceof StackPane sp) {
-                        Ellipse found = null;
-                        for (Node child : sp.getChildren()) {
-                            if (child instanceof Ellipse e) {
-                                found = e;
-                                break;
-                            }
-                        }
-                        if (found != null) {
-                            Object data = found.getUserData();
-                            if (data != null) {
-                                writer.write("Seite2;" + data);
-                                writer.newLine();
-                            }
-                        }
-                    }
-                }
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+            // Seitentexte werden ebenfalls gespeichert. Base64 verhindert,
+            // dass Sonderzeichen oder Semikolons das Dateiformat stören.
+            writer.write("Kreis1;" + encodeText(leftCircleText.getText()));
+            writer.newLine();
+            writer.write("Marsch1;" + encodeText(leftMarchText.getText()));
+            writer.newLine();
+            writer.write("Kreis2;" + encodeText(rightCircleText.getText()));
+            writer.newLine();
+            writer.write("Marsch2;" + encodeText(rightMarchText.getText()));
+            writer.newLine();
 
-                System.out.println("Datei gespeichert: " + file.getAbsolutePath());
-            } catch (IOException e) {
-                e.printStackTrace();
+            writeGridTokens(writer, "Seite1", Gridpane1);
+            writeGridTokens(writer, "Seite2", Gridpane2);
+            writeAnnotations(writer, "Seite1", Gridpane1);
+            writeAnnotations(writer, "Seite2", Gridpane2);
+
+            documentDirty = false;
+            System.out.println("Datei gespeichert: " + file.getAbsolutePath());
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            Alert alert = new Alert(Alert.AlertType.ERROR, "Die Datei konnte nicht gespeichert werden.");
+            alert.setTitle("Speichern fehlgeschlagen");
+            if (owner != null) {
+                alert.initOwner(owner);
+            }
+            alert.showAndWait();
+            return false;
+        }
+    }
+
+    private void writeGridTokens(BufferedWriter writer, String page, GridPane grid) throws IOException {
+        List<SerializedGridToken> tokens = new ArrayList<>();
+        for (Node node : grid.getChildren()) {
+            // Nur der oberste StackPane ist der eigentliche Noten-Slot. Die
+            // einzelnen Ellipsen darunter würden sonst mehrfach gespeichert.
+            if (!(node instanceof StackPane)) {
+                continue;
+            }
+            String token = tokenForGridNode(node);
+            Integer column = GridPane.getColumnIndex(node);
+            Integer row = GridPane.getRowIndex(node);
+            if (token != null && column != null && row != null) {
+                tokens.add(new SerializedGridToken(token, column, row, false));
             }
         }
+
+        for (PauseMarker marker : pauseMarkers) {
+            if (marker.grid == grid) {
+                tokens.add(new SerializedGridToken("PAUSENSTRICH", marker.column, marker.row, true));
+            }
+        }
+
+        tokens.sort(Comparator.comparingInt(SerializedGridToken::row)
+                .thenComparingInt(SerializedGridToken::column)
+                // Pause und folgende Note teilen sich dieselbe Spalte. Beim
+                // Laden muss der Pausenstrich deshalb zuerst wiederkommen.
+                .thenComparingInt(token -> token.pause() ? 0 : 1));
+        for (SerializedGridToken token : tokens) {
+            writer.write(page + ";" + token.token());
+            writer.newLine();
+        }
+    }
+
+    private record SerializedGridToken(String token, int column, int row, boolean pause) {
+    }
+
+    private record PendingSlur(String page, String token) {
+    }
+
+    private void writeAnnotations(BufferedWriter writer, String page, GridPane grid) throws IOException {
+        for (PageTextAnnotation annotation : textAnnotations) {
+            if (annotation.grid == grid) {
+                Text text = annotation.text;
+                writer.write(page + ";TEXT|" + encodeText(text.getText()) + "|" +
+                        text.getLayoutX() + "|" + text.getLayoutY());
+                writer.newLine();
+            }
+        }
+        for (SlurAnnotation annotation : slurAnnotations) {
+            if (annotation.grid == grid) {
+                String slots = annotation.slots.stream()
+                        .map(slot -> slot.column() + "," + slot.row())
+                        .collect(java.util.stream.Collectors.joining(";"));
+                writer.write(page + ";BOGEN|" + slots);
+                writer.newLine();
+            }
+        }
+    }
+
+    private String tokenForGridNode(Node node) {
+        // Repeat markers and pause strokes carry their token on the top-level
+        // node. Notes keep their legacy token on the first ellipse.
+        if (node.getUserData() instanceof String token) {
+            return token;
+        }
+        if (node instanceof StackPane stackPane) {
+            for (Node child : stackPane.getChildren()) {
+                if (child instanceof Ellipse ellipse && ellipse.getUserData() instanceof String token) {
+                    return token;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String encodeText(String text) {
+        return Base64.getEncoder().encodeToString(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decodeText(String encodedText) {
+        try {
+            return new String(Base64.getDecoder().decode(encodedText), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            // Lesbare Fallback-Daten aus einer älteren oder manuell bearbeiteten Datei.
+            return encodedText;
+        }
+    }
+
+    private boolean restorePageText(String key, String encodedText) {
+        String text = decodeText(encodedText);
+        switch (key) {
+            case "Kreis1" -> leftCircleText.setText(text);
+            case "Marsch1" -> leftMarchText.setText(text);
+            case "Kreis2" -> rightCircleText.setText(text);
+            case "Marsch2" -> rightMarchText.setText(text);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void clearPageTexts() {
+        leftCircleText.clear();
+        rightCircleText.clear();
+        leftMarchText.clear();
+        rightMarchText.clear();
+    }
+
+    private boolean restoreSpecialToken(String token) {
+        if ("PAUSENSTRICH".equals(token)) {
+            addPauseStroke();
+            return true;
+        }
+        if (token.startsWith("TEXT|")) {
+            String[] parts = token.split("\\|", 4);
+            if (parts.length == 4) {
+                try {
+                    addTextAnnotation(
+                            decodeText(parts[1]),
+                            new Point2D(Double.parseDouble(parts[2]), Double.parseDouble(parts[3]))
+                    );
+                    return true;
+                } catch (NumberFormatException ignored) {
+                    return false;
+                }
+            }
+        }
+        if (token.startsWith("BOGEN|")) {
+            if (activeGridPane == null) {
+                return false;
+            }
+            List<NoteSlot> slots = new ArrayList<>();
+            for (String part : token.substring("BOGEN|".length()).split(";")) {
+                String[] coordinates = part.split(",", 2);
+                if (coordinates.length != 2) {
+                    return false;
+                }
+                try {
+                    slots.add(new NoteSlot(
+                            Integer.parseInt(coordinates[0]),
+                            Integer.parseInt(coordinates[1])
+                    ));
+                } catch (NumberFormatException ignored) {
+                    return false;
+                }
+            }
+            activeGridPane.applyCss();
+            activeGridPane.layout();
+            Path path = createSlurPath(activeGridPane, slots);
+            if (!path.getElements().isEmpty()) {
+                annotationOverlay.getChildren().add(path);
+                slurAnnotations.add(new SlurAnnotation(activeGridPane, path, slots));
+            }
+            return true;
+        }
+        if (token.startsWith("WIEDERHOLUNG|")) {
+            String type = token.substring("WIEDERHOLUNG|".length());
+            try {
+                addWiederholungszeichen(Wiederholungsart.valueOf(type));
+                return true;
+            } catch (IllegalArgumentException ignored) {
+                // Unknown future marker: leave it ignored rather than
+                // interpreting it as a note.
+            }
+        }
+        return false;
+    }
+
+    private void restorePendingSlurs(List<PendingSlur> pendingSlurs) {
+        for (PendingSlur pending : pendingSlurs) {
+            if (selectPageForSerializedToken(pending.page())) {
+                restoreSpecialToken(pending.token());
+            }
+        }
+    }
+
+    private static String[] splitSerializedLine(String line) {
+        int separator = line.indexOf(';');
+        if (separator < 0) {
+            return null;
+        }
+        // Anders als String.split(...) behält diese Variante auch einen
+        // leeren Text hinter dem Semikolon bei.
+        return new String[]{line.substring(0, separator), line.substring(separator + 1)};
+    }
+
+    private boolean selectPageForSerializedToken(String page) {
+        if ("Seite1".equals(page)) {
+            selectPage(Gridpane1);
+            return true;
+        }
+        if ("Seite2".equals(page)) {
+            selectPage(Gridpane2);
+            return true;
+        }
+        return false;
     }
 
     @FXML
@@ -651,7 +2335,7 @@ public class Controller {
         alert.setContentText("Bitte wähle eine Option:");
 
         ButtonType buttonCancel = new ButtonType("Abbrechen", ButtonBar.ButtonData.CANCEL_CLOSE);
-        ButtonType buttonOverwrite = new ButtonType("Alle Noten überladen");
+        ButtonType buttonOverwrite = new ButtonType("Alle Noten überschreiben");
         ButtonType buttonAdd = new ButtonType("Noten hinzufügen");
 
         alert.getButtonTypes().setAll(buttonCancel, buttonOverwrite, buttonAdd);
@@ -668,6 +2352,27 @@ public class Controller {
         }
     }
 
+    private void clearAllPagesBeforeOverwrite() {
+        clearNoteSelection();
+        removePauseMarkersForGrid(Gridpane1);
+        removePauseMarkersForGrid(Gridpane2);
+        removeAnnotationsForGrid(Gridpane1);
+        removeAnnotationsForGrid(Gridpane2);
+        Gridpane1.getChildren().clear();
+        Gridpane2.getChildren().clear();
+        notesSeite1.clear();
+        notesSeite2.clear();
+        clearPageTexts();
+
+        rowOffset1 = 1;
+        columnOffset1 = 0;
+        rowOffset2 = 1;
+        columnOffset2 = 0;
+        activeGridPane = Gridpane1;
+        rowOffset = rowOffset1;
+        columnOffset = columnOffset1;
+    }
+
     @FXML
     private void handleLoadFromFile(ActionEvent event) {
         FileChooser fileChooser = new FileChooser();
@@ -675,22 +2380,32 @@ public class Controller {
         File file = fileChooser.showOpenDialog(printGridPaneButton.getScene().getWindow());
 
         if (file != null) {
-            Gridpane1.getChildren().clear();
-            Gridpane2.getChildren().clear();
-            notesSeite1.clear();
-            notesSeite2.clear();
-            rowOffset1 = 1;
-            columnOffset1 = 0;
-            rowOffset2 = 1;
-            columnOffset2 = 0;
+            // Überschreiben bedeutet wirklich: erst beide Seiten leeren,
+            // danach ausschließlich die Datei neu einlesen.
+            clearAllPagesBeforeOverwrite();
 
+            List<PendingSlur> pendingSlurs = new ArrayList<>();
             try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    String[] parts = line.split(";");
-                    if (parts.length == 2) {
+                    String[] parts = splitSerializedLine(line);
+                    if (parts != null && parts.length == 2) {
+                        if (restorePageText(parts[0], parts[1])) {
+                            continue;
+                        }
+
                         String seite = parts[0];
                         String token = parts[1];
+                        if (seite.startsWith("Seite") && token.startsWith("BOGEN|")) {
+                            pendingSlurs.add(new PendingSlur(seite, token));
+                            continue;
+                        }
+                        if (seite.startsWith("Seite") && selectPageForSerializedToken(seite)) {
+                            if (restoreSpecialToken(token)) {
+                                syncActivePageOffset();
+                                continue;
+                            }
+                        }
                         String baseNote;
                         NoteModifier modifier = NoteModifier.NORMAL;
 
@@ -730,6 +2445,8 @@ public class Controller {
                         }
                     }
                 }
+                restorePendingSlurs(pendingSlurs);
+                documentDirty = false;
                 System.out.println("Datei geladen: " + file.getAbsolutePath());
 
                 activeGridPane = Gridpane1;
@@ -751,13 +2468,28 @@ public class Controller {
         File file = fileChooser.showOpenDialog(printGridPaneButton.getScene().getWindow());
 
         if (file != null) {
+            List<PendingSlur> pendingSlurs = new ArrayList<>();
             try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    String[] parts = line.split(";");
-                    if (parts.length == 2) {
+                    String[] parts = splitSerializedLine(line);
+                    if (parts != null && parts.length == 2) {
+                        if (restorePageText(parts[0], parts[1])) {
+                            continue;
+                        }
+
                         String seite = parts[0];
                         String token = parts[1];
+                        if (seite.startsWith("Seite") && token.startsWith("BOGEN|")) {
+                            pendingSlurs.add(new PendingSlur(seite, token));
+                            continue;
+                        }
+                        if (seite.startsWith("Seite") && selectPageForSerializedToken(seite)) {
+                            if (restoreSpecialToken(token)) {
+                                syncActivePageOffset();
+                                continue;
+                            }
+                        }
                         String baseNote;
                         NoteModifier modifier = NoteModifier.NORMAL;
 
@@ -801,6 +2533,8 @@ public class Controller {
                         }
                     }
                 }
+                restorePendingSlurs(pendingSlurs);
+                markDocumentDirty();
                 System.out.println("Datei hinzugefügt: " + file.getAbsolutePath());
 
                 activeGridPane = Gridpane1;
@@ -841,8 +2575,8 @@ public class Controller {
                 Map.entry(A1, "A1.jpg")
         );
 
-        final double ICON_MAX_WIDTH = 75;
-        final double ICON_MAX_HEIGHT = 75;
+        final double ICON_MAX_WIDTH = 54;
+        final double ICON_MAX_HEIGHT = 54;
 
         for (Map.Entry<Button, String> e : mapping.entrySet()) {
             Button btn = e.getKey();
@@ -872,7 +2606,7 @@ public class Controller {
                 // Lege grafisches Icon links neben dem Text
                 btn.setGraphic(iv);
                 btn.setContentDisplay(ContentDisplay.BOTTOM); // Bild links vom Text
-                btn.setGraphicTextGap(8); // Abstand zwischen Bild und Text
+                btn.setGraphicTextGap(3); // kompakter Abstand zwischen Bild und Text
             } catch (IOException ex) {
                 ex.printStackTrace();
             }

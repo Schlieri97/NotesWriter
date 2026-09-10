@@ -125,8 +125,8 @@ _Each line represents a note and its corresponding page._
 ## 🧠 Hinweise zur Bedienung / _Usage Tips_
 
 - Klick auf Note → fügt Notenbild in die aktuelle Seite ein
-- **„Seitenwechsel“** → wechselt zwischen linker und rechter Seite
-- **„W-Offen“** → fügt Trennlinien ein
+- **„Linke Seite“ / „Rechte Seite“** → wählt die gewünschte Notenseite aus
+- **„Pausenstrich“** → fügt einen waagerechten Pausenstrich ein
 - **„Löschen“-Buttons** → letzte oder alle Noten entfernen
 - **„Drucken“** → druckt beide Seiten (füllt leere Felder automatisch mit Griffen)
 
