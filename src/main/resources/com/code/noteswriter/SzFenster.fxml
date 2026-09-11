@@ -117,9 +117,6 @@
                         <Button fx:id="Gis_As1" text="Gis_As1"/>
                         <Button fx:id="A1" text="A1"/>
                     </FlowPane>
-                    <Label fx:id="editSelectionLabel" text="Keine Note ausgewählt"
-                           wrapText="true" style="-fx-font-size: 12px; -fx-font-weight: bold;" />
-
                     <Separator />
                     <Label text="Wiederholungszeichen, Pausenstrich"
                            style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #37474F;" />

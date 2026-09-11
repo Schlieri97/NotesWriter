@@ -51,8 +51,6 @@ public class Controller {
     @FXML
     private Pane annotationOverlay;
     @FXML
-    private Label editSelectionLabel;
-    @FXML
     private Label slurSelectionLabel;
     @FXML
     private Button clearNoteSelectionButton;
@@ -139,6 +137,9 @@ public class Controller {
     private StackPane selectedNoteContainer;
     private GridPane selectedNoteGrid;
     private final List<StackPane> selectedNoteContainers = new ArrayList<>();
+    private Text selectedTextAnnotation;
+    private Path selectedSlurPath;
+    private final List<PauseMarker> selectedPauseMarkers = new ArrayList<>();
     private Rectangle selectionRectangle;
     private Point2D selectionStart;
     private boolean draggingSelection;
@@ -235,7 +236,6 @@ public class Controller {
         deleteAllNotesButton.setMaxWidth(Double.MAX_VALUE);
         setupPageTextFields();
         pageIndicator.setTextFill(Color.BLUE);
-        updateEditSelectionLabel();
         addIconsToNoteButtons();
         setupTooltips();
         setupDragAndDrop();
@@ -267,37 +267,94 @@ public class Controller {
     @FXML
     private void handleHelpAction(ActionEvent event) {
         Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle("Hilfe und Kontakt – SF Notenschreiber");
-        dialog.setHeaderText("Bedienung und Kontakt");
+        dialog.setTitle("Hilfe und Kontakt – " + AppInfo.NAME);
+        dialog.setHeaderText("Bedienung und Kontakt – Version " + AppInfo.VERSION);
         if (helpButton.getScene() != null) {
             dialog.initOwner(helpButton.getScene().getWindow());
         }
 
         TextArea helpText = new TextArea("""
-                Noten einfügen
-                • Eine Note links anklicken, um sie auf der aktiven Seite einzufügen.
-                • Mit einem Rechtsklick auf einen Noten-Button können Varianten gewählt werden.
-                • Die aktive Seite wird oben über „Linke Seite“ oder „Rechte Seite“ ausgewählt.
+                %s
+                Version: %s
 
-                Elemente bearbeiten
-                • Noten können mit der linken Maustaste ausgewählt und verschoben werden.
-                • Wiederholungszeichen und Pausenstriche werden über die entsprechenden Buttons eingefügt.
-                • Ein Pausenstrich kann mit Rechtsklick und „Pausenstrich löschen“ entfernt werden.
-                • Freien Text eingeben, „Text auf Seite einfügen“ drücken und den Text auf der Seite verschieben.
-                • Freier Text kann mit Rechtsklick und „Text löschen“ entfernt werden.
+                Bedienung – Schritt für Schritt
+
+                Seite auswählen
+                • Oben mit „Linke Seite“ oder „Rechte Seite“ die aktive Notenseite auswählen.
+                • Neue Noten, Pausen, Wiederholungszeichen und Texte werden auf der aktiven Seite eingefügt.
+                • Das aktuelle Element wird automatisch an der nächsten freien Position platziert.
+
+                Noten einfügen
+                • Einen Noten-Button mit der linken Maustaste anklicken, um die normale Note einzufügen.
+                • Einen Noten-Button mit der rechten Maustaste anklicken, um eine Variante auszuwählen:
+                  Lang (-), Kurz (•), Feste (f), Oktav (x) sowie Oktav + Lang oder Oktav + Kurz.
+                • Nicht bei jeder Note stehen Oktav-Varianten zur Verfügung.
+                • Noten-Buttons können auch mit gedrückter linker Maustaste auf die Seite gezogen werden.
+                  Beim Ablegen auf der linken oder rechten Seitenhälfte wird diese Seite aktiv.
+                • Wenn eine Note oder ein Wiederholungszeichen markiert ist, ersetzt ein Klick auf einen
+                  Noten-Button das markierte Element beziehungsweise alle markierten Elemente.
+
+                Elemente markieren
+                • Eine Note oder ein Wiederholungszeichen mit einem einfachen Linksklick markieren.
+                • Ein erneuter Linksklick auf das bereits markierte Element hebt die Auswahl wieder auf.
+                • Mehrere Elemente markieren: In einem freien Bereich der Notenseite die linke Maustaste
+                  drücken, gedrückt halten und ein Auswahlrechteck über die gewünschten Elemente ziehen.
+                  Erst beim Loslassen der linken Maustaste wird die Auswahl übernommen.
+                • Ein Linksklick außerhalb der markierten Noten hebt die Auswahl auf. Ein Klick auf eine
+                  andere Note ersetzt die bisherige Auswahl durch diese Note.
+                • Mit einem Rechtsklick auf ein markiertes Element öffnet sich das Auswahlmenü.
+                  Dort stehen „Auswahl aufheben“ und „Ausgewählte Elemente löschen“ zur Verfügung.
+
+                Bögen einfügen
+                • Mindestens zwei Noten auf derselben Seite markieren.
+                • Mit der rechten Maustaste auf eine markierte Note klicken und „Bogen über Auswahl“ wählen.
+                • Ein Bogen kann nicht über Wiederholungszeichen oder über zwei verschiedene Seiten gelegt werden.
+                • Einen vorhandenen Bogen mit der rechten Maustaste anklicken und „Bogen löschen“ wählen.
+
+                Wiederholungszeichen und Pausenstrich
+                • „Wiederholungszeichen“ anklicken und eine Variante auswählen:
+                  Normaler Strich |, Doppelstrich ||, Gestrichelter Strich ⋮,
+                  Wiederholungsanfang :|| oder Wiederholungsende ||:.
+                • Ohne Auswahl wird das Zeichen an der nächsten freien Position eingefügt.
+                  Bei einer Auswahl ersetzt es die markierten Noten oder Zeichen.
+                • „Pausenstrich“ fügt einen Pausenstrich an der aktuellen Einfügeposition ein.
+                • Ein Pausenstrich kann mit der rechten Maustaste und „Pausenstrich löschen“ entfernt werden.
+                • Das Wiederholungszeichen kann auf die Seite gezogen werden; dadurch wird ein
+                  Wiederholungsanfang eingefügt. Der Pausenstrich kann ebenfalls auf die Seite gezogen werden.
+
+                Freien Text verwenden
+                • Text in „Freien Text eingeben“ schreiben und „Text auf Seite einfügen“ anklicken.
+                • Der Text wird auf der aktiven Seite platziert.
+                • Einen Text mit gedrückter linker Maustaste an eine andere Stelle ziehen und dort loslassen.
+                • Mit der rechten Maustaste auf einen Text klicken und „Text löschen“ auswählen.
+
+                Kopfzeilen ausfüllen
+                • In den beiden Kreisen können Buchstaben eingetragen werden.
+                • In den beiden langen Feldern können zum Beispiel Marschnamen eingetragen werden.
+                • Die Eingaben werden zusammen mit der Notenschrift gespeichert und gedruckt.
+
+                Löschen
+                • „Letzte Note löschen“ entfernt die zuletzt eingefügte Note der aktiven Seite.
+                • Wenn an der aktuellen Position ein Pausenstrich liegt, wird dieser entfernt.
+                • „Alle Noten der … Seite löschen“ leert nach einer Sicherheitsabfrage die aktive Seite,
+                  einschließlich Noten, Pausenstrichen, Bögen und Texten.
+                • Markierte Elemente lassen sich alternativ über das Rechtsklick-Menü löschen.
+                • Mit der Entf-Taste werden markierte Elemente gelöscht; ohne Auswahl wird die letzte Note gelöscht.
 
                 Speichern, Laden und Drucken
-                • „Speichern“ legt die aktuelle Notenschrift als Datei ab.
-                • „Laden“ stellt eine zuvor gespeicherte Notenschrift wieder her.
-                • „Drucken“ erstellt einen Ausdruck der Notenseiten.
+                • „Speichern“ öffnet die Dateiauswahl und speichert Noten, Zeichen, Bögen, Texte und Kopfzeilen.
+                • „Laden“ bietet „Alle Noten überschreiben“ oder „Noten hinzufügen“ an.
+                • Beim Überschreiben werden beide Seiten geleert und anschließend die Datei geladen.
+                • Beim Hinzufügen werden die Inhalte der Datei zu den vorhandenen Noten ergänzt.
+                • „Drucken (A4 quer)“ erstellt einen Ausdruck der Notenseiten.
 
                 Kontakt
                 Erstellt und gebaut von Schlieri97.
-                """);
+                """.formatted(AppInfo.NAME, AppInfo.VERSION));
         helpText.setEditable(false);
         helpText.setWrapText(true);
-        helpText.setPrefRowCount(24);
-        helpText.setPrefColumnCount(62);
+        helpText.setPrefRowCount(36);
+        helpText.setPrefColumnCount(76);
         helpText.setStyle("-fx-font-size: 14px;");
 
         dialog.getDialogPane().setContent(helpText);
@@ -400,6 +457,7 @@ public class Controller {
             if (event.getButton() != MouseButton.PRIMARY) {
                 return;
             }
+            selectTextAnnotation(text);
             Point2D point = annotationOverlay.sceneToLocal(event.getSceneX(), event.getSceneY());
             text.setUserData("TEXT|" + encodeText(text.getText()));
             text.setTranslateX(point.getX() - text.getLayoutX());
@@ -461,6 +519,45 @@ public class Controller {
             }
             return false;
         });
+        if (selectedTextAnnotation == text) {
+            selectedTextAnnotation = null;
+        }
+    }
+
+    private void selectTextAnnotation(Text text) {
+        clearNoteSelection();
+        clearNonNoteSelection();
+        selectedTextAnnotation = text;
+        text.setFill(Color.web("#1976D2"));
+    }
+
+    private void selectSlur(Path path) {
+        clearNoteSelection();
+        clearNonNoteSelection();
+        selectedSlurPath = path;
+        path.setStroke(Color.web("#1976D2"));
+    }
+
+    private void selectPauseMarker(PauseMarker marker) {
+        clearNoteSelection();
+        clearNonNoteSelection();
+        selectedPauseMarkers.add(marker);
+        marker.line.setStroke(Color.web("#1976D2"));
+    }
+
+    private void clearNonNoteSelection() {
+        if (selectedTextAnnotation != null) {
+            selectedTextAnnotation.setFill(Color.BLACK);
+        }
+        if (selectedSlurPath != null) {
+            selectedSlurPath.setStroke(Color.BLACK);
+        }
+        for (PauseMarker marker : selectedPauseMarkers) {
+            marker.line.setStroke(Color.BLACK);
+        }
+        selectedTextAnnotation = null;
+        selectedSlurPath = null;
+        selectedPauseMarkers.clear();
     }
 
     @FXML
@@ -504,7 +601,10 @@ public class Controller {
         path.setStrokeWidth(2.0);
         path.setMouseTransparent(false);
         path.setOnMouseClicked(event -> {
-            if (event.getButton() == MouseButton.SECONDARY) {
+            if (event.getButton() == MouseButton.PRIMARY) {
+                selectSlur(path);
+                event.consume();
+            } else if (event.getButton() == MouseButton.SECONDARY) {
                 showSlurContextMenu(path, event.getScreenX(), event.getScreenY());
                 event.consume();
             }
@@ -581,6 +681,9 @@ public class Controller {
             markDocumentDirty();
         }
         annotationOverlay.getChildren().remove(path);
+        if (selectedSlurPath == path) {
+            selectedSlurPath = null;
+        }
     }
 
     private void updateSlurSelectionLabel(String message) {
@@ -637,9 +740,23 @@ public class Controller {
         selectionRectangle.setVisible(false);
         pageCanvas.getChildren().add(selectionRectangle);
 
+        // Eine Auswahl soll nicht bestehen bleiben, wenn außerhalb eines
+        // markierbaren Notenelements weitergearbeitet wird, z. B. in der
+        // Bedienleiste oder auf einer freien Stelle der Notenseite.
+        pageCanvas.sceneProperty().addListener((observable, oldScene, newScene) -> {
+            if (oldScene != null) {
+                oldScene.removeEventFilter(MouseEvent.MOUSE_PRESSED, this::clearSelectionWhenClickedOutsideNotes);
+                oldScene.removeEventFilter(KeyEvent.KEY_PRESSED, this::handleDeleteKeyPressed);
+            }
+            if (newScene != null) {
+                newScene.addEventFilter(MouseEvent.MOUSE_PRESSED, this::clearSelectionWhenClickedOutsideNotes);
+                newScene.addEventFilter(KeyEvent.KEY_PRESSED, this::handleDeleteKeyPressed);
+            }
+        });
+
         pageCanvas.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
             if (event.getButton() == MouseButton.PRIMARY
-                    && !(event.getTarget() instanceof Text)
+                    && !isElementSelectionTarget(event.getTarget())
                     && !isPageTextFieldTarget(event.getTarget())) {
                 selectionStart = new Point2D(event.getX(), event.getY());
                 draggingSelection = false;
@@ -672,6 +789,103 @@ public class Controller {
             selectionStart = null;
             draggingSelection = false;
         });
+    }
+
+    private void clearSelectionWhenClickedOutsideNotes(MouseEvent event) {
+        if (event.getButton() == MouseButton.PRIMARY && !isElementSelectionTarget(event.getTarget())) {
+            clearAllSelection();
+        }
+    }
+
+    private void handleDeleteKeyPressed(KeyEvent event) {
+        if (event.getCode() != KeyCode.DELETE || isTextInputTarget(event.getTarget())) {
+            return;
+        }
+
+        if (!selectedNoteContainers.isEmpty() || !selectedPauseMarkers.isEmpty()) {
+            int selectedCount = selectedNoteContainers.size() + selectedPauseMarkers.size();
+            if (selectedCount <= 1 || confirmDeleteMultipleSelection(selectedCount)) {
+                deleteSelectedNotesAndCompact();
+            }
+        } else if (selectedTextAnnotation != null) {
+            removeTextAnnotation(selectedTextAnnotation);
+        } else if (selectedSlurPath != null) {
+            deleteSlur(selectedSlurPath);
+        } else if (deleteLastNoteButton != null) {
+            deleteLastNoteButton.fire();
+        }
+        event.consume();
+    }
+
+    private boolean confirmDeleteMultipleSelection(int selectedCount) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Mehrere Elemente löschen");
+        alert.setHeaderText("Mehrere markierte Elemente löschen?");
+        alert.setContentText("Sollen wirklich " + selectedCount + " markierte Elemente gelöscht werden?");
+        ButtonType delete = new ButtonType("Löschen", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("Abbrechen", ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(delete, cancel);
+
+        Optional<ButtonType> result = alert.showAndWait();
+        return result.isPresent() && result.get() == delete;
+    }
+
+    private boolean isTextInputTarget(Object target) {
+        if (!(target instanceof Node node)) {
+            return false;
+        }
+        while (node != null) {
+            if (node instanceof TextInputControl) {
+                return true;
+            }
+            node = node.getParent();
+        }
+        return false;
+    }
+
+    private boolean isElementSelectionTarget(Object target) {
+        if (!(target instanceof Node node)) {
+            return false;
+        }
+
+        while (node != null) {
+            if (node instanceof StackPane stackPane && isSelectableContainer(stackPane)) {
+                return true;
+            }
+            if (node instanceof Text text && textAnnotations.stream()
+                    .anyMatch(annotation -> annotation.text == text)) {
+                return true;
+            }
+            if (node instanceof Path path && slurAnnotations.stream()
+                    .anyMatch(annotation -> annotation.path == path)) {
+                return true;
+            }
+            if (node instanceof Line line && pauseMarkers.stream()
+                    .anyMatch(marker -> marker.line == line)) {
+                return true;
+            }
+            node = node.getParent();
+        }
+        return false;
+    }
+
+    private void clearAllSelection() {
+        clearNoteSelection();
+        clearNonNoteSelection();
+    }
+
+    private boolean isNoteSelectionTarget(Object target) {
+        if (!(target instanceof Node node)) {
+            return false;
+        }
+
+        while (node != null) {
+            if (node instanceof StackPane stackPane && isSelectableContainer(stackPane)) {
+                return true;
+            }
+            node = node.getParent();
+        }
+        return false;
     }
 
     private boolean isPageTextFieldTarget(Object target) {
@@ -724,6 +938,20 @@ public class Controller {
             }
         }
         setSelectedNotes(notes);
+        for (PauseMarker marker : pauseMarkers) {
+            Bounds pauseBounds = pageCanvas.sceneToLocal(
+                    marker.line.localToScene(marker.line.getBoundsInLocal()));
+            if (selectionBounds.intersects(pauseBounds)) {
+                addPauseMarkerToSelection(marker);
+            }
+        }
+    }
+
+    private void addPauseMarkerToSelection(PauseMarker marker) {
+        if (!selectedPauseMarkers.contains(marker)) {
+            selectedPauseMarkers.add(marker);
+            marker.line.setStroke(Color.web("#1976D2"));
+        }
     }
 
     private Bounds noteBoundsInPage(StackPane noteContainer, GridPane grid) {
@@ -830,7 +1058,10 @@ public class Controller {
 
         PauseMarker marker = new PauseMarker(activeGridPane, pauseLine, columnOffset, rowOffset);
         pauseLine.setOnMouseClicked(event -> {
-            if (event.getButton() == MouseButton.SECONDARY) {
+            if (event.getButton() == MouseButton.PRIMARY) {
+                selectPauseMarker(marker);
+                event.consume();
+            } else if (event.getButton() == MouseButton.SECONDARY) {
                 showPauseContextMenu(marker, event.getScreenX(), event.getScreenY());
                 event.consume();
             }
@@ -919,6 +1150,8 @@ public class Controller {
     private void removePauseMarker(PauseMarker marker) {
         if (pauseMarkers.remove(marker)) {
             pauseOverlay.getChildren().remove(marker.line);
+            selectedPauseMarkers.remove(marker);
+            markDocumentDirty();
         }
     }
 
@@ -926,6 +1159,7 @@ public class Controller {
         pauseMarkers.removeIf(marker -> {
             if (marker.grid == grid) {
                 pauseOverlay.getChildren().remove(marker.line);
+                selectedPauseMarkers.remove(marker);
                 return true;
             }
             return false;
@@ -943,6 +1177,9 @@ public class Controller {
         slurAnnotations.removeIf(annotation -> {
             if (annotation.grid == grid) {
                 annotationOverlay.getChildren().remove(annotation.path);
+                if (selectedSlurPath == annotation.path) {
+                    selectedSlurPath = null;
+                }
                 return true;
             }
             return false;
@@ -1325,6 +1562,7 @@ public class Controller {
 
     private void setSelectedNotes(Collection<StackPane> notes) {
         clearNoteSelection();
+        clearNonNoteSelection();
         selectedNoteContainers.addAll(notes);
         if (selectedNoteContainers.isEmpty()) {
             return;
@@ -1336,7 +1574,6 @@ public class Controller {
                 note.setEffect(new DropShadow(8, Color.web("#1976D2")));
             }
         }
-        updateEditSelectionLabel();
         if (selectedNoteContainers.size() >= 2) {
             updateSlurSelectionLabel(selectedNoteContainers.size() +
                     " Noten markiert – jetzt Bogen einfügen.");
@@ -1380,24 +1617,6 @@ public class Controller {
         menu.show(pageCanvas, screenX, screenY);
     }
 
-    private void updateEditSelectionLabel() {
-        if (editSelectionLabel == null) {
-            return;
-        }
-        if (selectedNoteContainer == null) {
-            editSelectionLabel.setText("Keine Note ausgewählt");
-            editSelectionLabel.setTextFill(Color.web("#607D8B"));
-            return;
-        }
-        if (selectedNoteContainers.size() > 1) {
-            editSelectionLabel.setText("Ausgewählt: " + selectedNoteContainers.size() + " Elemente");
-        } else {
-            Object token = selectedNoteContainer.getUserData();
-            editSelectionLabel.setText("Ausgewählt: " + (token == null ? "Note" : token.toString().replace('|', ' ')));
-        }
-        editSelectionLabel.setTextFill(Color.web("#1976D2"));
-    }
-
     @FXML
     private void handleClearNoteSelectionAction(ActionEvent event) {
         clearNoteSelection();
@@ -1409,30 +1628,40 @@ public class Controller {
     }
 
     private void deleteSelectedNotesAndCompact() {
-        if (selectedNoteContainers.isEmpty()) {
+        if (selectedNoteContainers.isEmpty() && selectedPauseMarkers.isEmpty()) {
             return;
         }
 
         markDocumentDirty();
 
         Set<StackPane> selected = Set.copyOf(selectedNoteContainers);
+        Set<PauseMarker> selectedPauses = Set.copyOf(selectedPauseMarkers);
         Set<GridPane> affectedGrids = selected.stream()
                 .map(this::findNoteGrid)
                 .filter(Objects::nonNull)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        selectedPauses.stream()
+                .map(marker -> marker.grid)
+                .forEach(affectedGrids::add);
 
         for (GridPane grid : affectedGrids) {
             Set<NoteSlot> selectedSlots = selected.stream()
                     .filter(note -> findNoteGrid(note) == grid)
                     .map(note -> new NoteSlot(GridPane.getColumnIndex(note), GridPane.getRowIndex(note)))
                     .collect(java.util.stream.Collectors.toSet());
+            Set<NoteSlot> selectedPauseSlots = selectedPauses.stream()
+                    .filter(marker -> marker.grid == grid)
+                    .map(marker -> new NoteSlot(marker.column, marker.row))
+                    .collect(java.util.stream.Collectors.toSet());
             List<SerializedGridToken> remainingTokens = collectGridTokens(grid).stream()
-                    .filter(token -> !isSelectableToken(token.token()) ||
+                    .filter(token -> token.pause()
+                            ? !selectedPauseSlots.contains(new NoteSlot(token.column(), token.row()))
+                            : !isSelectableToken(token.token()) ||
                             !selectedSlots.contains(new NoteSlot(token.column(), token.row())))
                     .toList();
             rebuildGridCompact(grid, remainingTokens);
         }
-        clearNoteSelection();
+        clearAllSelection();
     }
 
     private boolean isNoteToken(String token) {
@@ -1530,7 +1759,6 @@ public class Controller {
         selectedNoteContainers.clear();
         selectedNoteContainer = null;
         selectedNoteGrid = null;
-        updateEditSelectionLabel();
     }
 
     private void replaceSelectedNote(String baseNote, NoteModifier modifier) {
@@ -1735,9 +1963,11 @@ public class Controller {
                 "-fx-padding: 2 4; " +
                 "-fx-alignment: CENTER_LEFT; " +
                 "-fx-cursor: hand;";
-        String hoverStyle = normalStyle.replace("transparent;", "#E3F2FD;");
+        // Der Hilfe-/Kontakt-Link bleibt auch beim Überfahren ohne Hintergrund.
+        String hoverStyle = normalStyle;
         button.setStyle(normalStyle);
-        button.setPrefWidth(150);
+        button.setPrefWidth(Region.USE_COMPUTED_SIZE);
+        button.setMaxWidth(Region.USE_COMPUTED_SIZE);
         button.setPrefHeight(28);
         button.setOnMouseEntered(event -> button.setStyle(hoverStyle));
         button.setOnMouseExited(event -> button.setStyle(normalStyle));
@@ -1890,7 +2120,7 @@ public class Controller {
                 rowOffset = rowOffset2;
                 columnOffset = columnOffset2;
             }
-            clearNoteSelection();
+            clearAllSelection();
             syncActivePageOffset();
         }
     }
@@ -2401,7 +2631,7 @@ public class Controller {
     }
 
     private void clearAllPagesBeforeOverwrite() {
-        clearNoteSelection();
+        clearAllSelection();
         removePauseMarkersForGrid(Gridpane1);
         removePauseMarkersForGrid(Gridpane2);
         removeAnnotationsForGrid(Gridpane1);
