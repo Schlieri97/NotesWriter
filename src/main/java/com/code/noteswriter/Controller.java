@@ -1,6 +1,7 @@
 package com.code.noteswriter;
 
 import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.beans.binding.Bindings;
 import javafx.fxml.FXML;
 import javafx.geometry.Bounds;
@@ -66,6 +67,25 @@ public class Controller {
     private static final double PAGE_HEIGHT = 910.0;
     private static final double NOTE_SLOT_WIDTH = 8.4;
     private static final double NOTE_GAP = 5.5;
+    private static final String EMPTY_BLOCK = "LEERBLOCK";
+    private static final String EMPTY_BLOCK_OWNER = "emptyBlockOwner";
+    private static final Map<KeyCode, String> NOTE_KEYS = Map.ofEntries(
+            Map.entry(KeyCode.C, "C1"), Map.entry(KeyCode.D, "D"),
+            Map.entry(KeyCode.E, "E"), Map.entry(KeyCode.F, "F"),
+            Map.entry(KeyCode.G, "G"), Map.entry(KeyCode.A, "A"),
+            Map.entry(KeyCode.H, "H"), Map.entry(KeyCode.B, "Ais_B"),
+            Map.entry(KeyCode.S, "Cis_Des"), Map.entry(KeyCode.R, "Dis_Es"),
+            Map.entry(KeyCode.T, "Fis_Ges"), Map.entry(KeyCode.Z, "Gis_As"),
+            Map.entry(KeyCode.V, "F_1"),
+            Map.entry(KeyCode.DIGIT1, "C1"), Map.entry(KeyCode.DIGIT2, "Cis_Des1"),
+            Map.entry(KeyCode.DIGIT3, "D1"), Map.entry(KeyCode.DIGIT4, "Dis_Es1"),
+            Map.entry(KeyCode.DIGIT5, "E1"), Map.entry(KeyCode.DIGIT6, "F1"),
+            Map.entry(KeyCode.DIGIT7, "Fis_Ges1"), Map.entry(KeyCode.DIGIT8, "G1"),
+            Map.entry(KeyCode.DIGIT9, "Gis_As1"), Map.entry(KeyCode.DIGIT0, "A1"));
+    private final Set<KeyCode> pressedKeys = EnumSet.noneOf(KeyCode.class);
+    private final EventHandler<KeyEvent> keyPressedHandler = this::handleNoteKeyPressed;
+    private final EventHandler<KeyEvent> keyReleasedHandler = event -> pressedKeys.remove(event.getCode());
+    private final EventHandler<MouseEvent> selectionMouseHandler = this::clearSelectionWhenClickedOutsideNotes;
 
     private Model model;
     private int rowOffset = 1;
@@ -122,7 +142,9 @@ public class Controller {
             Speichern, Laden, printGridPaneButton, deleteLastNoteButton,
             deleteAllNotesButton, Wiederholungszeichen, leftPageButton, rightPageButton,
             pauseStrokeButton, repeatStartButton, repeatEndButton,
-            addFreeTextButton, helpButton;
+            addFreeTextButton, helpButton, emptyBlockButton;
+    @FXML
+    private Label keyboardStatus;
 
     @FXML
     public GridPane Gridpane1;
@@ -229,6 +251,7 @@ public class Controller {
         styleButtonsOtherButtons(Wiederholungszeichen);
         styleButtonsOtherButtons(pauseStrokeButton);
         styleButtonsOtherButtons(addFreeTextButton);
+        styleButtonsOtherButtons(emptyBlockButton);
         styleHelpButton(helpButton);
         stylePageButton(leftPageButton);
         stylePageButton(rightPageButton);
@@ -246,21 +269,28 @@ public class Controller {
         helpButton.setTooltip(new Tooltip("Kurzanleitung und Kontaktinformationen öffnen"));
         leftPageButton.setTooltip(new Tooltip("Linke Notenseite aktivieren"));
         rightPageButton.setTooltip(new Tooltip("Rechte Notenseite aktivieren"));
-        deleteLastNoteButton.setTooltip(new Tooltip("Die zuletzt eingefügte Note der aktiven Seite löschen"));
+        deleteLastNoteButton.setTooltip(new Tooltip("Letzte Eingabe der aktiven Seite löschen · Backspace / Entf"));
+        emptyBlockButton.setTooltip(new Tooltip("Aktuellen Block abschließen und einen ganzen Notenblock leer lassen · Enter"));
         deleteAllNotesButton.setTooltip(new Tooltip("Alle Noten, Pausenstriche und Beschriftungen der aktiven Seite löschen"));
         Wiederholungszeichen.setTooltip(new Tooltip("Normalen Strich oder Wiederholungszeichen auswählen"));
         pauseStrokeButton.setTooltip(new Tooltip("Pausenstrich an der aktuellen Position einfügen"));
         addFreeTextButton.setTooltip(new Tooltip("Den Text aus dem Eingabefeld auf der Seite platzieren"));
         Speichern.setTooltip(new Tooltip("Die aktuelle Notenschrift als Datei speichern"));
         Laden.setTooltip(new Tooltip("Eine gespeicherte Notenschrift öffnen"));
-        printGridPaneButton.setTooltip(new Tooltip("Die Notenseiten drucken"));
+        printGridPaneButton.setTooltip(new Tooltip("Drucken oder als PDF ausgeben – mit oder ohne Cis/Des-Auffüllung"));
         freeTextInput.setTooltip(new Tooltip("Text eingeben, der auf der Seite erscheinen soll"));
 
         for (Button noteButton : List.of(
                 Cis_Des, D, Dis_Es, E, F, F_1, Fis_Ges, G, Gis_As,
                 A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1,
                 Fis_Ges1, F1, G1, Gis_As1, A1)) {
-            noteButton.setTooltip(new Tooltip("Linksklick: Note einfügen · Rechtsklick: Varianten"));
+            String keys = NOTE_KEYS.entrySet().stream()
+                    .filter(entry -> entry.getValue().equals(noteButton.getText()))
+                    .map(entry -> entry.getKey().getName()).sorted()
+                    .collect(java.util.stream.Collectors.joining(" / "));
+            noteButton.setTooltip(new Tooltip("Taste: " + keys +
+                    "\nStrg: lang · Alt: kurz · Umschalt: Oktav · Strg+Alt: feste" +
+                    "\nLinksklick: einfügen · Rechtsklick: Varianten"));
         }
     }
 
@@ -293,6 +323,26 @@ public class Controller {
                   Beim Ablegen auf der linken oder rechten Seitenhälfte wird diese Seite aktiv.
                 • Wenn eine Note oder ein Wiederholungszeichen markiert ist, ersetzt ein Klick auf einen
                   Noten-Button das markierte Element beziehungsweise alle markierten Elemente.
+
+                Noten mit der Tastatur schreiben
+                • C = C1, D = D, E = E, F = F, G = G, A = A, H = H und B = Ais/B.
+                • S = Cis/Des, R = Dis/Es, T = Fis/Ges, Z = Gis/As, V = alternativer F-Griff (F_1).
+                • Hohe Töne auf der Zahlenreihe:
+                  1 = C1, 2 = Cis/Des1, 3 = D1, 4 = Dis/Es1, 5 = E1,
+                  6 = F1, 7 = Fis/Ges1, 8 = G1, 9 = Gis/As1, 0 = A1.
+                • Strg + Tontaste = lang; Alt + Tontaste = kurz; Umschalt + Tontaste = Oktav.
+                • Strg + Umschalt + Tontaste = Oktav lang; Alt + Umschalt + Tontaste = Oktav kurz.
+                • Strg + Alt + Tontaste = feste. Nicht verfügbare Oktav-Varianten werden nicht eingefügt.
+                • Beispiel: D schreibt D, Strg+D schreibt ein langes D, Alt+Umschalt+D ein kurzes Oktav-D.
+                • Tastatureingaben hängen neue Noten an, auch wenn eine ältere Note markiert ist.
+                • Pro Tastendruck entsteht eine Note. In Textfeldern gelten die normalen Texteingaben.
+
+                Einen neuen Marsch beginnen
+                • „Leerer Notenblock“ oder Enter schließt den begonnenen Block ab und lässt danach einen
+                  ganzen waagerechten Notenblock leer. Der nächste Marsch beginnt im folgenden Block.
+                • Am Anfang eines Blocks wird direkt dieser Block frei gelassen.
+                • Der Abstand bleibt beim Speichern, Laden und beim Auffüllen mit Cis/Des erhalten.
+                • Backspace / Entf nimmt einen zuletzt eingefügten Leerblock vollständig zurück.
 
                 Elemente markieren
                 • Eine Note oder ein Wiederholungszeichen mit einem einfachen Linksklick markieren.
@@ -339,14 +389,17 @@ public class Controller {
                 • „Alle Noten der … Seite löschen“ leert nach einer Sicherheitsabfrage die aktive Seite,
                   einschließlich Noten, Pausenstrichen, Bögen und Texten.
                 • Markierte Elemente lassen sich alternativ über das Rechtsklick-Menü löschen.
-                • Mit der Entf-Taste werden markierte Elemente gelöscht; ohne Auswahl wird die letzte Note gelöscht.
+                • Backspace und Entf löschen immer die letzte Eingabe der aktiven Seite, auch bei einer Auswahl.
+                  In Textfeldern löschen diese Tasten nur Text.
 
                 Speichern, Laden und Drucken
                 • „Speichern“ öffnet die Dateiauswahl und speichert Noten, Zeichen, Bögen, Texte und Kopfzeilen.
                 • „Laden“ bietet „Alle Noten überschreiben“ oder „Noten hinzufügen“ an.
                 • Beim Überschreiben werden beide Seiten geleert und anschließend die Datei geladen.
                 • Beim Hinzufügen werden die Inhalte der Datei zu den vorhandenen Noten ergänzt.
-                • „Drucken (A4 quer)“ erstellt einen Ausdruck der Notenseiten.
+                • „Drucken / PDF exportieren“ bietet „Leerstellen beibehalten“ und „Mit Cis/Des auffüllen“.
+                • Eingefügte Leerblöcke bleiben immer frei. Die gespeicherte Notenfolge wird nicht verändert.
+                • Im anschließenden Druckdialog kann ein PDF-Drucker gewählt werden. Ausgabe: A4 quer.
 
                 Kontakt
                 Erstellt und gebaut von Schlieri97.
@@ -731,6 +784,7 @@ public class Controller {
     }
 
     private void setupMouseSelection() {
+        pageCanvas.setFocusTraversable(true);
         selectionRectangle = new Rectangle();
         selectionRectangle.setManaged(false);
         selectionRectangle.setMouseTransparent(true);
@@ -744,17 +798,29 @@ public class Controller {
         // markierbaren Notenelements weitergearbeitet wird, z. B. in der
         // Bedienleiste oder auf einer freien Stelle der Notenseite.
         pageCanvas.sceneProperty().addListener((observable, oldScene, newScene) -> {
+            pressedKeys.clear();
             if (oldScene != null) {
-                oldScene.removeEventFilter(MouseEvent.MOUSE_PRESSED, this::clearSelectionWhenClickedOutsideNotes);
-                oldScene.removeEventFilter(KeyEvent.KEY_PRESSED, this::handleDeleteKeyPressed);
+                oldScene.removeEventFilter(MouseEvent.MOUSE_PRESSED, selectionMouseHandler);
+                oldScene.removeEventFilter(KeyEvent.KEY_PRESSED, keyPressedHandler);
+                oldScene.removeEventFilter(KeyEvent.KEY_RELEASED, keyReleasedHandler);
             }
             if (newScene != null) {
-                newScene.addEventFilter(MouseEvent.MOUSE_PRESSED, this::clearSelectionWhenClickedOutsideNotes);
-                newScene.addEventFilter(KeyEvent.KEY_PRESSED, this::handleDeleteKeyPressed);
+                newScene.addEventFilter(MouseEvent.MOUSE_PRESSED, selectionMouseHandler);
+                newScene.addEventFilter(KeyEvent.KEY_PRESSED, keyPressedHandler);
+                newScene.addEventFilter(KeyEvent.KEY_RELEASED, keyReleasedHandler);
+                newScene.windowProperty().addListener((obs, oldWindow, newWindow) -> {
+                    if (newWindow != null) {
+                        newWindow.focusedProperty().addListener((o, wasFocused, focused) -> pressedKeys.clear());
+                    }
+                });
             }
         });
 
         pageCanvas.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+            if (event.getButton() == MouseButton.PRIMARY && !isTextInputTarget(event.getTarget())) {
+                // Nach einer Beschriftung reicht ein Klick auf die Seite zum Weiterschreiben.
+                pageCanvas.requestFocus();
+            }
             if (event.getButton() == MouseButton.PRIMARY
                     && !isElementSelectionTarget(event.getTarget())
                     && !isPageTextFieldTarget(event.getTarget())) {
@@ -797,37 +863,52 @@ public class Controller {
         }
     }
 
-    private void handleDeleteKeyPressed(KeyEvent event) {
-        if (event.getCode() != KeyCode.DELETE || isTextInputTarget(event.getTarget())) {
+    private void handleNoteKeyPressed(KeyEvent event) {
+        if (isTextInputTarget(event.getTarget()) || event.isMetaDown()
+                || (activeContextMenu != null && activeContextMenu.isShowing())) {
             return;
         }
-
-        if (!selectedNoteContainers.isEmpty() || !selectedPauseMarkers.isEmpty()) {
-            int selectedCount = selectedNoteContainers.size() + selectedPauseMarkers.size();
-            if (selectedCount <= 1 || confirmDeleteMultipleSelection(selectedCount)) {
-                deleteSelectedNotesAndCompact();
-            }
-        } else if (selectedTextAnnotation != null) {
-            removeTextAnnotation(selectedTextAnnotation);
-        } else if (selectedSlurPath != null) {
-            deleteSlur(selectedSlurPath);
-        } else if (deleteLastNoteButton != null) {
-            deleteLastNoteButton.fire();
+        KeyCode code = event.getCode();
+        String note = NOTE_KEYS.get(code);
+        boolean plainKey = !event.isControlDown() && !event.isAltDown() && !event.isShiftDown();
+        boolean delete = plainKey && (code == KeyCode.DELETE || code == KeyCode.BACK_SPACE);
+        boolean emptyBlock = plainKey && code == KeyCode.ENTER;
+        if (note == null && !delete && !emptyBlock) {
+            return;
         }
         event.consume();
-    }
-
-    private boolean confirmDeleteMultipleSelection(int selectedCount) {
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Mehrere Elemente löschen");
-        alert.setHeaderText("Mehrere markierte Elemente löschen?");
-        alert.setContentText("Sollen wirklich " + selectedCount + " markierte Elemente gelöscht werden?");
-        ButtonType delete = new ButtonType("Löschen", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("Abbrechen", ButtonBar.ButtonData.CANCEL_CLOSE);
-        alert.getButtonTypes().setAll(delete, cancel);
-
-        Optional<ButtonType> result = alert.showAndWait();
-        return result.isPresent() && result.get() == delete;
+        // Ein gehaltener Ton erzeugt durch die Tastenwiederholung keine Notenserie.
+        if (!pressedKeys.add(code)) {
+            return;
+        }
+        if (delete) {
+            handleDeleteLastNoteAction(null);
+        } else if (emptyBlock) {
+            handleEmptyBlockAction(null);
+        } else {
+            if (event.isShiftDown() && (NO_OKTAV_NOTES.contains(note)
+                    || (event.isControlDown() && event.isAltDown()))) {
+                keyboardStatus.setText("Für " + note.replace('_', '/') + " ist diese Oktav-Variante nicht verfügbar.");
+                return;
+            }
+            NoteModifier modifier;
+            if (event.isControlDown() && event.isAltDown()) {
+                modifier = NoteModifier.FESTE;
+            } else if (event.isControlDown()) {
+                modifier = event.isShiftDown() ? NoteModifier.OKTAV_LANG : NoteModifier.LANG;
+            } else if (event.isAltDown()) {
+                modifier = event.isShiftDown() ? NoteModifier.OKTAV_KURZ : NoteModifier.KURZ;
+            } else {
+                modifier = event.isShiftDown() ? NoteModifier.OKTAV : NoteModifier.NORMAL;
+            }
+            if (rowOffset >= 119) {
+                keyboardStatus.setText("Diese Seite ist voll. Bitte die andere Seite wählen.");
+                return;
+            }
+            clearAllSelection();
+            addNote(note, modifier);
+            keyboardStatus.setText("Eingefügt: " + note.replace('_', '/') + " · " + modifier.name().toLowerCase(Locale.GERMAN).replace('_', ' '));
+        }
     }
 
     private boolean isTextInputTarget(Object target) {
@@ -1466,6 +1547,45 @@ public class Controller {
             rowOffset2 = rowOffset;
             columnOffset2 = columnOffset;
         }
+    }
+
+    @FXML
+    private void handleEmptyBlockAction(ActionEvent event) {
+        // Nach dem Abstand muss auf dieser Seite noch ein neuer Marsch beginnen können.
+        int nextRow = rowOffset + (columnOffset == 0 ? 17 : 34);
+        if (nextRow >= 119) {
+            keyboardStatus.setText("Für einen leeren Block und den neuen Marsch reicht der Platz nicht. Bitte die andere Seite wählen.");
+            return;
+        }
+        clearAllSelection();
+        addEmptyBlock();
+        keyboardStatus.setText("Ein Notenblock bleibt leer. Der nächste Marsch beginnt im folgenden Block.");
+    }
+
+    private void addEmptyBlock() {
+        if (rowOffset >= 119) {
+            return;
+        }
+        int nextRow = Math.min(120, rowOffset + (columnOffset == 0 ? 17 : 34));
+        StackPane owner = null;
+        // Unsichtbare Slots bewahren Breite und Höhe auch ohne Druck-Auffüllung.
+        // Nur der erste Slot trägt den Dateitoken; der ganze Abstand ist eine Eingabe.
+        while (rowOffset < nextRow) {
+            StackPane slot = new StackPane();
+            slot.setMinSize(NOTE_SLOT_WIDTH, 87);
+            slot.setPrefSize(NOTE_SLOT_WIDTH, 87);
+            slot.setMaxSize(NOTE_SLOT_WIDTH, 87);
+            slot.setMouseTransparent(true);
+            if (owner == null) {
+                owner = slot;
+                owner.setUserData(EMPTY_BLOCK);
+            }
+            slot.getProperties().put(EMPTY_BLOCK_OWNER, owner);
+            activeGridPane.add(slot, columnOffset, rowOffset, 1, 9);
+            advanceGridPosition();
+        }
+        activeGridPane.setHgap(NOTE_GAP);
+        markDocumentDirty();
     }
 
     private void setupAllNoteButtons() {
@@ -2139,47 +2259,32 @@ public class Controller {
             return;
         }
 
-        // Prüfen, ob überhaupt etwas zu löschen ist
-        if (rowOffset == 0 && columnOffset == 0) {
-            return; // Bereits ganz am Anfang → nichts mehr zu löschen
+        StackPane lastSlot = activeGridPane.getChildren().stream()
+                .filter(node -> node instanceof StackPane && tokenForGridNode(node) != null)
+                .map(node -> (StackPane) node)
+                .max(Comparator.comparingInt((StackPane node) -> GridPane.getRowIndex(node))
+                        .thenComparingInt(node -> GridPane.getColumnIndex(node)))
+                .orElse(null);
+        if (lastSlot == null) {
+            return;
         }
-
         markDocumentDirty();
-
-        // Spalten und Zeilen zuerst korrekt zurücksetzen
-        if (columnOffset > 0) {
-            columnOffset--; // Gehe eine Spalte zurück
+        rowOffset = GridPane.getRowIndex(lastSlot);
+        columnOffset = GridPane.getColumnIndex(lastSlot);
+        if (EMPTY_BLOCK.equals(tokenForGridNode(lastSlot))) {
+            activeGridPane.getChildren().removeIf(node -> node.getProperties().get(EMPTY_BLOCK_OWNER) == lastSlot);
         } else {
-            if (rowOffset >= 17) {
-                columnOffset = 40;
-                rowOffset -= 17;
-            } else {
-                // Wir sind am Anfang → nichts mehr da
-                rowOffset = 0;
-                columnOffset = 0;
-                return;
+            removeNoteSlot(activeGridPane, lastSlot, columnOffset, rowOffset);
+        }
+        NoteSlot removedSlot = new NoteSlot(columnOffset, rowOffset);
+        slurAnnotations.removeIf(annotation -> {
+            if (annotation.grid == activeGridPane && annotation.slots.contains(removedSlot)) {
+                annotationOverlay.getChildren().remove(annotation.path);
+                return true;
             }
-        }
-
-        // Jetzt sicher löschen
-        int cellsToDelete = 9;
-        for (int i = 0; i < cellsToDelete; i++) {
-            int rowToDelete = rowOffset + i;
-            int colToDelete = columnOffset;
-
-            activeGridPane.getChildren().removeIf(node ->
-                    GridPane.getRowIndex(node) != null &&
-                            GridPane.getColumnIndex(node) != null &&
-                            GridPane.getRowIndex(node) == rowToDelete &&
-                    GridPane.getColumnIndex(node) == colToDelete
-            );
-        }
-        removePauseMarker(activeGridPane, columnOffset, rowOffset);
-        if (selectedNoteGrid == activeGridPane &&
-                selectedNoteContainer != null &&
-                !activeGridPane.getChildren().contains(selectedNoteContainer)) {
-            clearNoteSelection();
-        }
+            return false;
+        });
+        clearAllSelection();
         syncActivePageOffset();
     }
 
@@ -2303,11 +2408,28 @@ public class Controller {
     //Drucken von Noten
     @FXML
     private void handlePrintGridPaneAction(ActionEvent event) {
+        Alert options = new Alert(Alert.AlertType.CONFIRMATION);
+        options.initOwner(printGridPaneButton.getScene().getWindow());
+        options.setTitle("Drucken / PDF exportieren");
+        options.setHeaderText("Wie sollen freie Notenplätze ausgegeben werden?");
+        options.setContentText("Bewusst eingefügte leere Notenblöcke bleiben bei beiden Optionen frei.\n"
+                + "Für einen PDF-Export im nächsten Dialog einen PDF-Drucker auswählen.");
+        ButtonType unchanged = new ButtonType("Leerstellen beibehalten", ButtonBar.ButtonData.OK_DONE);
+        ButtonType fill = new ButtonType("Mit Cis/Des auffüllen", ButtonBar.ButtonData.OTHER);
+        options.getButtonTypes().setAll(unchanged, fill, ButtonType.CANCEL);
+        Optional<ButtonType> choice = options.showAndWait();
+        if (choice.isEmpty() || choice.get() == ButtonType.CANCEL) {
+            return;
+        }
+        printPage(choice.get() == fill);
+    }
+
+    private void printPage(boolean fillWithCisDes) {
         syncActivePageOffset();
-        // Von vorne über beide Seiten laufen: jede leere Position erhält nur
-        // für den Druck eine Cystest-Note, belegte Positionen bleiben unverändert.
-        List<Node> tempNodes1 = fillRemainingRowsWithCisDes(Gridpane1, 1, 0);
-        List<Node> tempNodes2 = fillRemainingRowsWithCisDes(Gridpane2, 1, 0);
+        clearAllSelection();
+        // Reservierte Leerblöcke sind belegte, unsichtbare Slots und bleiben frei.
+        List<Node> tempNodes1 = prepareGridForPrint(Gridpane1, fillWithCisDes);
+        List<Node> tempNodes2 = prepareGridForPrint(Gridpane2, fillWithCisDes);
         Map<TextField, String> prompts = hidePromptTextsForPrinting();
 
         try {
@@ -2319,7 +2441,10 @@ public class Controller {
 
             Printer printer = Printer.getDefaultPrinter();
             if (printer == null) {
-                System.out.println("Kein Drucker gefunden.");
+                Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                        "Kein Drucker gefunden. Bitte einen Drucker oder PDF-Drucker einrichten.");
+                alert.initOwner(printGridPaneButton.getScene().getWindow());
+                alert.showAndWait();
                 return;
             }
 
@@ -2358,6 +2483,10 @@ public class Controller {
             restorePromptTexts(prompts);
             syncActivePageOffset();
         }
+    }
+
+    private List<Node> prepareGridForPrint(GridPane grid, boolean fillWithCisDes) {
+        return fillWithCisDes ? fillRemainingRowsWithCisDes(grid, 1, 0) : List.of();
     }
 
     @FXML
@@ -2516,6 +2645,10 @@ public class Controller {
     }
 
     private boolean restoreSpecialToken(String token) {
+        if (EMPTY_BLOCK.equals(token)) {
+            addEmptyBlock();
+            return true;
+        }
         if ("PAUSENSTRICH".equals(token)) {
             addPauseStroke();
             return true;

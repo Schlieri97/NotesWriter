@@ -29,10 +29,11 @@ _The program allows you to draw, save, load, and print note pages with fingering
 
 - 🖨️ **Drucken:** / _**Printing:**_
   - Druckt die komplette Notenseite (A4-Querformat)._
-  - Fehlende Felder werden automatisch mit dem Griff „Cis/Des“ aufgefüllt._
+  - Wahlweise freie Felder mit „Cis/Des“ auffüllen oder Leerstellen beibehalten.
+  - Bewusst eingefügte leere Notenblöcke bleiben in beiden Varianten frei.
   
   - _Prints the complete note page (A4 landscape).
-  - _Missing slots are automatically filled with the “C#/Db” fingering.
+  - _Choose whether to fill unused slots with “C#/Db” or preserve empty spaces. Explicit blank blocks stay empty._
 
 - 🧹 **Löschen:** / _**Delete:**_
   - Entferne einzelne oder alle Noten über Schaltflächen.
@@ -128,13 +129,41 @@ _Each line represents a note and its corresponding page._
 - **„Linke Seite“ / „Rechte Seite“** → wählt die gewünschte Notenseite aus
 - **„Pausenstrich“** → fügt einen waagerechten Pausenstrich ein
 - **„Löschen“-Buttons** → letzte oder alle Noten entfernen
-- **„Drucken“** → druckt beide Seiten (füllt leere Felder automatisch mit Griffen)
+- **„Leerer Notenblock“ / Enter** → beendet den begonnenen Block, lässt einen ganzen waagerechten Block frei und beginnt danach den nächsten Marsch
+- **Backspace / Entf** → löscht die letzte Eingabe der aktiven Seite; ein zuletzt eingefügter Leerblock wird als Ganzes entfernt
+- **„Drucken / PDF exportieren“** → wahlweise mit Cis/Des auffüllen oder Leerstellen beibehalten; für PDF einen PDF-Drucker auswählen
 
 - _Click a note → adds the fingering image to the current page_
 - _**"Switch Page"** → toggles between left and right page_
 - _**"W-Open"** → inserts dividing lines_
 - _**"Delete" buttons** → remove the last or all notes_
-- _**"Print"** → prints both pages (auto-fills empty fields with fingering images)_
+- _**"Print / export PDF"** → choose whether to fill unused slots; select a PDF printer to export PDF_
+
+### Tastatur
+
+Tastenkürzel gelten außerhalb von Textfeldern und hängen neue Noten an die aktive Seite an.
+Ein gehaltener Ton wird nicht wiederholt eingefügt. Die Tasten stehen auch in den Tooltips der Notenbuttons.
+
+| Taste | Ton |
+| --- | --- |
+| C, D, E, F, G, A, H | C1, D, E, F, G, A, H |
+| S, R, T, Z, B | Cis/Des, Dis/Es, Fis/Ges, Gis/As, Ais/B |
+| V | Alternativer F-Griff (F_1) |
+| 1, 2, 3, 4, 5 | C1, Cis/Des1, D1, Dis/Es1, E1 |
+| 6, 7, 8, 9, 0 | F1, Fis/Ges1, G1, Gis/As1, A1 |
+
+| Kombination mit Tontaste | Variante |
+| --- | --- |
+| Strg | Lang |
+| Alt | Kurz |
+| Umschalt | Oktav |
+| Strg + Umschalt | Oktav lang |
+| Alt + Umschalt | Oktav kurz |
+| Strg + Alt | Feste |
+
+Beispiel: **D** schreibt D, **Strg+D** ein langes D und **Alt+Umschalt+D** ein kurzes Oktav-D.
+Nicht verfügbare Oktav-Varianten werden mit einem Hinweis abgewiesen.
+Ein Leerblock wird als `Seite1;LEERBLOCK` bzw. `Seite2;LEERBLOCK` gespeichert.
 
 ---
 

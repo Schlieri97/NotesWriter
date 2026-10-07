@@ -10,6 +10,12 @@ import javafx.stage.Stage;
 import javafx.stage.Screen;
 import javafx.stage.StageStyle;
 
+import java.io.File;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.nio.file.Path;
+import java.util.List;
+
 public class Main extends Application {
 
     Model m;
@@ -52,7 +58,8 @@ public class Main extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("SzFenster.fxml"));
+        URL layoutUrl = findLayoutUrl();
+        FXMLLoader loader = new FXMLLoader(layoutUrl);
         Parent root = loader.load();
 
         // Inject model into the controller
@@ -92,6 +99,35 @@ public class Main extends Application {
         primaryStage.setMaximized(false);
         primaryStage.setFullScreen(false);
         primaryStage.show();
+    }
+
+    /**
+     * Lädt die FXML zuerst aus dem normalen Klassenpfad. IntelliJ kann bei
+     * einzelnen Startkonfigurationen jedoch nur {@code target/classes} auf den
+     * Modulpfad setzen, während die Ressourcen noch unter {@code out/production}
+     * oder im Quellbaum liegen. Der Fallback verhindert dann den wenig
+     * hilfreichen FXMLLoader-Fehler „Location is not set“.
+     */
+    private URL findLayoutUrl() throws MalformedURLException {
+        String resourceName = "/com/code/noteswriter/SzFenster.fxml";
+        URL classpathUrl = Main.class.getResource(resourceName);
+        if (classpathUrl != null) {
+            return classpathUrl;
+        }
+
+        List<Path> candidates = List.of(
+                Path.of("src", "main", "resources", "com", "code", "noteswriter", "SzFenster.fxml"),
+                Path.of("out", "production", "NotesWriter", "com", "code", "noteswriter", "SzFenster.fxml"),
+                Path.of("target", "classes", "com", "code", "noteswriter", "SzFenster.fxml")
+        );
+        for (Path candidate : candidates) {
+            File file = candidate.toFile();
+            if (file.isFile()) {
+                return file.toURI().toURL();
+            }
+        }
+        throw new IllegalStateException("SzFenster.fxml wurde nicht gefunden. "
+                + "Bitte die Maven-Ressourcen kopieren oder das Projekt neu bauen.");
     }
 
 

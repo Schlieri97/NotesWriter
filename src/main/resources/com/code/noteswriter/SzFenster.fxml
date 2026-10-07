@@ -93,6 +93,38 @@
                     <Label text="Noten einfügen" style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #37474F;" />
                     <Label text="Linksklick fügt die Note auf der aktiven Seite ein. Rechtsklick zeigt Varianten."
                            wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
+                    <VBox spacing="6.0"
+                          style="-fx-padding: 10; -fx-background-color: #EEF5FB; -fx-background-radius: 8; -fx-border-color: #D7E6F2; -fx-border-radius: 8;">
+                        <Label text="Tastenkürzel"
+                               style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1565C0;" />
+                        <Label text="Grundtöne:  C · D · E · F · G · A · H"
+                               style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Label text="B = Ais/B"
+                               style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Label text="Halbtöne:  S = Cis/Des · R = Dis/Es"
+                               wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Label text="T = Fis/Ges · Z = Gis/As · V = F_1"
+                               wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Label text="Hohe Töne:  1–0 = C1 bis A1"
+                               style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Separator />
+                        <Label text="Tonvarianten"
+                               style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1565C0;" />
+                        <Label text="Strg + Ton  →  lang"
+                               style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Label text="Alt + Ton  →  kurz"
+                               style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Label text="Umschalt + Ton  →  Oktav"
+                               style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Label text="Strg + Alt + Ton  →  feste"
+                               style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
+                        <Label text="Oktav + lang/kurz: Umschalt zusammen mit Strg oder Alt"
+                               wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
+                        <Label text="Backspace / Entf  →  letzte Eingabe löschen"
+                               wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
+                    </VBox>
+                    <Label fx:id="keyboardStatus" text="Tastenkürzel gelten außerhalb von Textfeldern. C spielt C1."
+                           wrapText="true" minHeight="32.0" style="-fx-font-size: 12px; -fx-text-fill: #1565C0;" />
                     <FlowPane hgap="5.0" vgap="6.0" prefWrapLength="315.0">
                         <Button fx:id="Cis_Des" text="Cis_Des"/>
                         <Button fx:id="D" text="D"/>
@@ -117,6 +149,10 @@
                         <Button fx:id="Gis_As1" text="Gis_As1"/>
                         <Button fx:id="A1" text="A1"/>
                     </FlowPane>
+                    <Button fx:id="emptyBlockButton" text="Leerer Notenblock (Enter)"
+                            onAction="#handleEmptyBlockAction" />
+                    <Label text="Schließt den aktuellen Block ab und lässt einen ganzen Block für den nächsten Marsch frei."
+                           wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                     <Separator />
                     <Label text="Wiederholungszeichen, Pausenstrich"
                            style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #37474F;" />
@@ -135,7 +171,7 @@
                     <Label text="Weitere Aktionen" style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #37474F;" />
                     <Button fx:id="Speichern" text="Speichern" onAction="#handleSaveToFile" />
                     <Button fx:id="Laden" text="Laden" onAction="#handleLoadChoice" />
-                    <Button fx:id="printGridPaneButton" onAction="#handlePrintGridPaneAction" text="Drucken (A4 quer)" />
+                    <Button fx:id="printGridPaneButton" onAction="#handlePrintGridPaneAction" text="Drucken / PDF exportieren" />
                 </VBox>
             </content>
         </ScrollPane>
