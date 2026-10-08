@@ -82,6 +82,7 @@ public class Main extends Application {
         primaryStage.setResizable(true);
         primaryStage.setScene(new Scene(root));
         primaryStage.setOnCloseRequest(controller::handleCloseRequest);
+        primaryStage.setOnHidden(event -> controller.stopMicrophone());
 
         // The FXML page is intentionally large for printing. If its
         // preferred size is used directly on a smaller monitor, centering

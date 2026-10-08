@@ -8,6 +8,54 @@ _The program allows you to draw, save, load, and print note pages with fingering
 
 ---
 
+## Flöte per Mikrofon eingeben
+
+Im Bereich **Noten einfügen → Flöte per Mikrofon eingeben** das Mikrofon und
+das Instrument wählen, danach **Mikrofon starten** drücken.
+Voreingestellt ist **Ces-Querflöte (Halbton tiefer)**: Zur gehörten Tonhöhe wird
+ein Halbton addiert, um den notierten Ton zu erhalten. Zusätzlich stehen C-Querflöte,
+C-Piccolo und die höher klingende Ces-Sopranflöte zur Auswahl. Letztere wird
+um elf Halbtöne nach unten auf die notierte Tonhöhe umgesetzt.
+
+Die separate **Grifflage (Oktaven)** passt diesen Ton an die Register der
+Grifftabelle an. Für die hier verwendete Ces-Flöte ist sie anhand des gemeldeten
+Messungen auf **−1** voreingestellt: ca. 550 Hz ergibt D mit Oktav-X,
+ca. 1124 Hz normales D und ca. 2207 Hz das hohe D1. Die Oktav-Markierung
+bezeichnet in dieser Grifftabelle die tiefere Lage. Das ist eine Anpassung an diese
+Flöte und keine allgemeine Eigenschaft aller Ces-Flöten. Bei einer anderen
+Flöte kann die Grifflage vor dem Start zwischen −2 und +2 geändert werden.
+Ein Instrumentwechsel setzt sie auf −1 für Ces-Querflöte, sonst auf 0 zurück.
+Die Anzeige „Grifflage“ bezeichnet die interne Zuordnung, nicht die klingende Oktave.
+
+Einen einzelnen Ton etwa 0,3 Sekunden halten: Das erkannte Griffbild wird auf
+der aktiven Seite eingefügt. Ein gehaltener Ton wird nur einmal übernommen;
+für denselben Ton erneut etwa 0,2 Sekunden pausieren. Stabile Tonwechsel können
+auch ohne Pause übernommen werden. **Mikrofon stoppen** beendet die Aufnahme.
+
+Es werden keine Referenz-Tondateien benötigt, keine Aufnahmen gespeichert und
+keine Audiodaten hochgeladen. Die Tonhöhe wird lokal aus dem Mikrofonsignal
+berechnet. Notenlängen, Pausen und alternative Griffe werden weiterhin manuell
+bearbeitet. Begleitmusik oder mehrere Instrumente gleichzeitig sind nicht vorgesehen.
+
+Der Kammerton ist auf A = 440 Hz eingestellt und kann vor dem Start zwischen
+430 und 450 Hz geändert werden. Bei Störgeräuschen den Empfindlichkeitsregler
+nach rechts bewegen; bei leisen, nicht erkannten Tönen nach links. Einstellungen
+können bei gestopptem Mikrofon geändert werden. Ist kein Zugriff möglich, in den
+Windows-Datenschutzeinstellungen den Mikrofonzugriff für Desktop-Apps erlauben
+und das gewählte Eingabegerät prüfen.
+
+Nach Instrument- und Grifflagenkorrektur gilt intern: Die gemessenen
+Ces-Referenzen für F_Oktav, Fis/Ges_Oktav, F, Fis/Ges, F1 und G1 liegen bei
+ca. 670, 720, 1350, 1400, 2888 und 2972 Hz. Zwischen den Referenzen liegen
+die Umschaltgrenzen; dadurch bleibt F bei kleinen Schwankungen unterhalb der
+Fis/Ges-Grenze. Die übrigen Noten verwenden weiterhin die MIDI-Zuordnung.
+Bei Piccolo wird der gehörte Ton zuvor um eine Oktave nach unten versetzt.
+Außerhalb dieses Bereichs wird keine Note eingefügt; insbesondere fehlt im
+bisherigen Griffmodell ein tiefes C4. Die Alternative F_1 wird nicht automatisch
+gewählt, da sich verschiedene Griffe derselben Tonhöhe akustisch nicht unterscheiden lassen.
+
+---
+
 ## 🚀 Funktionen / _Features_
 
 - 🎶 **Interaktive Notenanzeige:** / _**Interactive Note Display:**_
@@ -37,6 +85,8 @@ _The program allows you to draw, save, load, and print note pages with fingering
 
 - 🧹 **Löschen:** / _**Delete:**_
   - Entferne einzelne oder alle Noten über Schaltflächen.
+  - Entf/Backspace löscht zuerst markierte Noten, Pausenstriche oder Wiederholungszeichen; ohne Auswahl die letzte Eingabe.
+  - Markierter Freitext lässt sich ebenfalls mit Entf/Backspace löschen. Escape hebt jede Markierung auf.
   - _Remove individual notes or clear all notes using buttons._
 
 - 🪶 **Design:**
@@ -129,7 +179,8 @@ _Each line represents a note and its corresponding page._
 - **„Linke Seite“ / „Rechte Seite“** → wählt die gewünschte Notenseite aus
 - **„Pausenstrich“** → fügt einen waagerechten Pausenstrich ein
 - **„Löschen“-Buttons** → letzte oder alle Noten entfernen
-- **„Leerer Notenblock“ / Enter** → beendet den begonnenen Block, lässt einen ganzen waagerechten Block frei und beginnt danach den nächsten Marsch
+- **↶ Rückgängig / ↷ Wiederherstellen** → Bearbeitungsschritte zurücknehmen oder erneut ausführen; auch mit **Strg+Z** und **Strg+Umschalt+Z**
+- **„Leerer Notenblock“ / Enter** → beendet den begonnenen Block und lässt eine ganze Zeile frei, auch als letzte Zeile der Seite; der freie Block ist im Editor beschriftet, die Beschriftung erscheint nicht im Druck/PDF
 - **Backspace / Entf** → löscht die letzte Eingabe der aktiven Seite; ein zuletzt eingefügter Leerblock wird als Ganzes entfernt
 - **„Drucken / PDF exportieren“** → wahlweise mit Cis/Des auffüllen oder Leerstellen beibehalten; für PDF einen PDF-Drucker auswählen
 

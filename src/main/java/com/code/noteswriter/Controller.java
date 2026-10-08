@@ -41,12 +41,106 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class Controller {
+    @FXML private ComboBox<MicrophoneInput.Device> microphoneDevice;
+    @FXML private ComboBox<FluteInstrument> microphoneInstrument;
+    @FXML private Slider microphoneThreshold;
+    @FXML private Spinner<Integer> concertPitch;
+    @FXML private Spinner<Integer> microphoneOctave;
+    @FXML private Button microphoneButton;
+    @FXML private Label microphoneStatus;
+    private MicrophoneInput microphone;
+    private String lastMicrophoneDetection;
+
+    private void setupMicrophone() {
+        if (microphoneDevice == null) return;
+        microphoneDevice.getItems().setAll(MicrophoneInput.devices());
+        microphoneDevice.getSelectionModel().selectFirst();
+        microphoneInstrument.getItems().setAll(FluteInstrument.values());
+        microphoneInstrument.getSelectionModel().select(FluteInstrument.CES_FLUTE);
+        concertPitch.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(430, 450, 440));
+        // Measured Ces registers: ~550 Hz = D_Oktav, ~1124 Hz = D, ~2207 Hz = D1.
+        microphoneOctave.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(-2, 2, -1));
+        microphoneInstrument.valueProperty().addListener((observable, previous, instrument) -> {
+            microphoneOctave.getValueFactory().setValue(instrument == FluteInstrument.CES_FLUTE ? -1 : 0);
+        });
+    }
+
+    @FXML private void handleMicrophoneAction() {
+        if (microphone != null) {
+            stopMicrophone();
+            return;
+        }
+        MicrophoneInput input = new MicrophoneInput();
+        lastMicrophoneDetection = null;
+        microphone = input;
+        setMicrophoneControls(true);
+        microphoneStatus.setText("Mikrofon wird geöffnet …");
+        input.start(microphoneDevice.getValue(), microphoneInstrument.getValue(),
+                concertPitch.getValue(), microphoneOctave.getValue(), Math.pow(10, microphoneThreshold.getValue() / 20),
+                reading -> javafx.application.Platform.runLater(() -> {
+                    if (microphone != input) return;
+                    acceptMicrophoneReading(reading);
+                }), message -> javafx.application.Platform.runLater(() -> {
+                    if (microphone != input) return;
+                    stopMicrophone();
+                    microphoneStatus.setText(message);
+                }));
+    }
+
+    void acceptMicrophoneReading(MicrophoneInput.Reading reading) {
+        if (reading.midi() < 0) {
+            microphoneStatus.setText(lastMicrophoneDetection == null
+                    ? "Bereit – bitte einen einzelnen Ton spielen."
+                    : lastMicrophoneDetection + " · Pause");
+            return;
+        }
+        FlutePitchMapping.Note note = FlutePitchMapping.forMidi(reading.midi());
+        String detected = String.format(Locale.GERMAN, "Gemessen: %.2f Hz · Grifflage: %s",
+                reading.frequency(), FlutePitchMapping.name(reading.midi()));
+        if (note == null) {
+            lastMicrophoneDetection = detected + ": kein Griffbild vorhanden (Grifflage D4–A6).";
+            microphoneStatus.setText(lastMicrophoneDetection);
+            return;
+        }
+        if (reading.insert() && model != null) {
+            if (rowOffset >= 119) {
+                stopMicrophone();
+                microphoneStatus.setText("Seite voll. Andere Seite wählen und Mikrofon erneut starten.");
+                return;
+            }
+            clearAllSelection();
+            addNote(note.base(), note.modifier());
+        }
+        lastMicrophoneDetection = detected + " → " + note;
+        microphoneStatus.setText(lastMicrophoneDetection + (reading.insert() ? " · übernommen" : " · erkannt"));
+    }
+
+    public void stopMicrophone() {
+        MicrophoneInput previous = microphone;
+        microphone = null;
+        if (previous != null) previous.close();
+        if (microphoneButton != null) {
+            setMicrophoneControls(false);
+            microphoneStatus.setText("Mikrofon aus. Es werden keine Tondateien gespeichert.");
+        }
+    }
+
+    private void setMicrophoneControls(boolean running) {
+        microphoneButton.setText(running ? "Mikrofon stoppen" : "Mikrofon starten");
+        microphoneDevice.setDisable(running);
+        microphoneInstrument.setDisable(running);
+        microphoneThreshold.setDisable(running);
+        concertPitch.setDisable(running);
+        microphoneOctave.setDisable(running);
+    }
     @FXML
     public StackPane printArea;
     @FXML
     private Group pageContent;
     @FXML
     private StackPane pageCanvas;
+    @FXML
+    private Pane emptyBlockOverlay;
     @FXML
     private Pane pauseOverlay;
     @FXML
@@ -57,6 +151,10 @@ public class Controller {
     private Button clearNoteSelectionButton;
     @FXML
     private Button deleteSelectedNotesButton;
+    @FXML
+    private Button undoButton;
+    @FXML
+    private Button redoButton;
     @FXML
     private TextField leftCircleText, rightCircleText, leftMarchText, rightMarchText, freeTextInput;
     public Label pageIndicator;
@@ -69,6 +167,8 @@ public class Controller {
     private static final double NOTE_GAP = 5.5;
     private static final String EMPTY_BLOCK = "LEERBLOCK";
     private static final String EMPTY_BLOCK_OWNER = "emptyBlockOwner";
+    private static final String EMPTY_BLOCK_GUIDE = "LEERER NOTENBLOCK – WIRD NICHT GEDRUCKT";
+    private static final double EMPTY_BLOCK_GUIDE_WIDTH = 41 * (NOTE_SLOT_WIDTH + NOTE_GAP) - NOTE_GAP;
     private static final Map<KeyCode, String> NOTE_KEYS = Map.ofEntries(
             Map.entry(KeyCode.C, "C1"), Map.entry(KeyCode.D, "D"),
             Map.entry(KeyCode.E, "E"), Map.entry(KeyCode.F, "F"),
@@ -83,6 +183,7 @@ public class Controller {
             Map.entry(KeyCode.DIGIT7, "Fis_Ges1"), Map.entry(KeyCode.DIGIT8, "G1"),
             Map.entry(KeyCode.DIGIT9, "Gis_As1"), Map.entry(KeyCode.DIGIT0, "A1"));
     private final Set<KeyCode> pressedKeys = EnumSet.noneOf(KeyCode.class);
+    private final Set<Button> noteInputButtons = new HashSet<>();
     private final EventHandler<KeyEvent> keyPressedHandler = this::handleNoteKeyPressed;
     private final EventHandler<KeyEvent> keyReleasedHandler = event -> pressedKeys.remove(event.getCode());
     private final EventHandler<MouseEvent> selectionMouseHandler = this::clearSelectionWhenClickedOutsideNotes;
@@ -97,12 +198,24 @@ public class Controller {
     private final List<PageTextAnnotation> textAnnotations = new ArrayList<>();
     private final List<SlurAnnotation> slurAnnotations = new ArrayList<>();
     private boolean documentDirty;
+    private static final int HISTORY_LIMIT = 100;
+    private final Deque<DocumentSnapshot> undoHistory = new ArrayDeque<>();
+    private final Deque<DocumentSnapshot> redoHistory = new ArrayDeque<>();
+    private DocumentSnapshot savedDocumentSnapshot;
+    private boolean historySuspended;
+    private boolean draggingTextHistoryRecorded;
+
+    private record DocumentSnapshot(String leftCircle, String leftMarch, String rightCircle,
+                                    String rightMarch, String body, boolean rightPage, boolean dirty) {
+    }
 
     private static final class PauseMarker {
-        private final GridPane grid;
+        private GridPane grid;
         private final Line line;
-        private final int column;
-        private final int row;
+        private int column;
+        private int row;
+        private boolean free;
+        private boolean dragging;
 
         private PauseMarker(GridPane grid, Line line, int column, int row) {
             this.grid = grid;
@@ -168,10 +281,121 @@ public class Controller {
     public void setModel(Model model) {
         this.model = model;
         selectPage(Gridpane1);
+        savedDocumentSnapshot = captureDocumentSnapshot();
     }
 
     private void markDocumentDirty() {
+        recordUndoCheckpoint();
         documentDirty = true;
+    }
+
+    private DocumentSnapshot captureDocumentSnapshot() {
+        StringWriter buffer = new StringWriter();
+        try {
+            BufferedWriter writer = new BufferedWriter(buffer);
+            writeGridTokens(writer, "Seite1", Gridpane1);
+            writeGridTokens(writer, "Seite2", Gridpane2);
+            writeAnnotations(writer, "Seite1", Gridpane1);
+            writeAnnotations(writer, "Seite2", Gridpane2);
+            writer.flush();
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+        return new DocumentSnapshot(leftCircleText.getText(), leftMarchText.getText(),
+                rightCircleText.getText(), rightMarchText.getText(), buffer.toString(),
+                activeGridPane == Gridpane2, documentDirty);
+    }
+
+    private void recordUndoCheckpoint() {
+        if (historySuspended || model == null) return;
+        pushUndoSnapshot(captureDocumentSnapshot());
+    }
+
+    private void pushUndoSnapshot(DocumentSnapshot snapshot) {
+        if (!sameDocumentContent(snapshot, undoHistory.peekLast())) {
+            undoHistory.addLast(snapshot);
+            if (undoHistory.size() > HISTORY_LIMIT) undoHistory.removeFirst();
+        }
+        redoHistory.clear();
+        updateHistoryButtons();
+    }
+
+    private void recordPageTextEdit(TextField field, String previousValue) {
+        if (!historySuspended && model != null) {
+            DocumentSnapshot current = captureDocumentSnapshot();
+            pushUndoSnapshot(new DocumentSnapshot(
+                    field == leftCircleText ? previousValue : current.leftCircle(),
+                    field == leftMarchText ? previousValue : current.leftMarch(),
+                    field == rightCircleText ? previousValue : current.rightCircle(),
+                    field == rightMarchText ? previousValue : current.rightMarch(),
+                    current.body(), current.rightPage(), current.dirty()));
+        }
+        documentDirty = true;
+    }
+
+    private boolean sameDocumentContent(DocumentSnapshot first, DocumentSnapshot second) {
+        return sameDocumentData(first, second) && first.rightPage() == second.rightPage();
+    }
+
+    private boolean sameDocumentData(DocumentSnapshot first, DocumentSnapshot second) {
+        return second != null && Objects.equals(first.leftCircle(), second.leftCircle())
+                && Objects.equals(first.leftMarch(), second.leftMarch())
+                && Objects.equals(first.rightCircle(), second.rightCircle())
+                && Objects.equals(first.rightMarch(), second.rightMarch())
+                && Objects.equals(first.body(), second.body());
+    }
+
+    private void updateHistoryButtons() {
+        if (undoButton != null) undoButton.setDisable(undoHistory.isEmpty());
+        if (redoButton != null) redoButton.setDisable(redoHistory.isEmpty());
+    }
+
+    @FXML
+    private void handleUndoAction(ActionEvent event) {
+        if (undoHistory.isEmpty()) return;
+        DocumentSnapshot current = captureDocumentSnapshot();
+        DocumentSnapshot previous = undoHistory.removeLast();
+        redoHistory.addLast(current);
+        restoreDocumentSnapshot(previous);
+        updateHistoryButtons();
+    }
+
+    @FXML
+    private void handleRedoAction(ActionEvent event) {
+        if (redoHistory.isEmpty()) return;
+        DocumentSnapshot current = captureDocumentSnapshot();
+        DocumentSnapshot next = redoHistory.removeLast();
+        undoHistory.addLast(current);
+        restoreDocumentSnapshot(next);
+        updateHistoryButtons();
+    }
+
+    private void restoreDocumentSnapshot(DocumentSnapshot snapshot) {
+        historySuspended = true;
+        try {
+            if (activeContextMenu != null) activeContextMenu.hide();
+            clearAllPagesBeforeOverwrite();
+            leftCircleText.setText(snapshot.leftCircle());
+            leftMarchText.setText(snapshot.leftMarch());
+            rightCircleText.setText(snapshot.rightCircle());
+            rightMarchText.setText(snapshot.rightMarch());
+            List<PendingSlur> pendingSlurs = new ArrayList<>();
+            for (String line : snapshot.body().lines().toList()) {
+                String[] parts = splitSerializedLine(line);
+                if (parts == null || !selectPageForSerializedToken(parts[0])) continue;
+                if (parts[1].startsWith("BOGEN|")) {
+                    pendingSlurs.add(new PendingSlur(parts[0], parts[1]));
+                } else {
+                    appendSerializedToken(parts[1]);
+                }
+            }
+            restorePendingSlurs(pendingSlurs);
+            selectPage(snapshot.rightPage() ? Gridpane2 : Gridpane1);
+            documentDirty = savedDocumentSnapshot == null ? snapshot.dirty()
+                    : !sameDocumentData(snapshot, savedDocumentSnapshot);
+        } finally {
+            historySuspended = false;
+        }
     }
 
     /**
@@ -180,6 +404,7 @@ public class Controller {
      * das Fenster geöffnet.
      */
     public void handleCloseRequest(WindowEvent event) {
+        stopMicrophone();
         if (!documentDirty) {
             return;
         }
@@ -219,6 +444,7 @@ public class Controller {
 
     @FXML
     public void initialize() {
+        setupMicrophone();
         setupResponsivePage();
         setupAllNoteButtons();
         styleButtonsNotes(Cis_Des);
@@ -248,6 +474,8 @@ public class Controller {
         styleButtonsOtherButtons(printGridPaneButton);
         styleButtonsOtherButtons(deleteLastNoteButton);
         styleButtonsOtherButtons(deleteAllNotesButton);
+        styleButtonsOtherButtons(undoButton);
+        styleButtonsOtherButtons(redoButton);
         styleButtonsOtherButtons(Wiederholungszeichen);
         styleButtonsOtherButtons(pauseStrokeButton);
         styleButtonsOtherButtons(addFreeTextButton);
@@ -263,14 +491,17 @@ public class Controller {
         setupTooltips();
         setupDragAndDrop();
         setupMouseSelection();
+        updateHistoryButtons();
     }
 
     private void setupTooltips() {
         helpButton.setTooltip(new Tooltip("Kurzanleitung und Kontaktinformationen öffnen"));
         leftPageButton.setTooltip(new Tooltip("Linke Notenseite aktivieren"));
         rightPageButton.setTooltip(new Tooltip("Rechte Notenseite aktivieren"));
-        deleteLastNoteButton.setTooltip(new Tooltip("Letzte Eingabe der aktiven Seite löschen · Backspace / Entf"));
-        emptyBlockButton.setTooltip(new Tooltip("Aktuellen Block abschließen und einen ganzen Notenblock leer lassen · Enter"));
+        undoButton.setTooltip(new Tooltip("Letzte Änderung rückgängig machen (Strg+Z)"));
+        redoButton.setTooltip(new Tooltip("Rückgängig gemachte Änderung wiederherstellen (Strg+Umschalt+Z)"));
+        deleteLastNoteButton.setTooltip(new Tooltip("Letzte Eingabe der aktiven Seite löschen · Backspace / Entf löscht zuerst markierte Elemente"));
+        emptyBlockButton.setTooltip(new Tooltip("Aktuellen Block abschließen und eine ganze Zeile frei lassen, auch am Seitenende · Enter"));
         deleteAllNotesButton.setTooltip(new Tooltip("Alle Noten, Pausenstriche und Beschriftungen der aktiven Seite löschen"));
         Wiederholungszeichen.setTooltip(new Tooltip("Normalen Strich oder Wiederholungszeichen auswählen"));
         pauseStrokeButton.setTooltip(new Tooltip("Pausenstrich an der aktuellen Position einfügen"));
@@ -350,8 +581,8 @@ public class Controller {
                 • Mehrere Elemente markieren: In einem freien Bereich der Notenseite die linke Maustaste
                   drücken, gedrückt halten und ein Auswahlrechteck über die gewünschten Elemente ziehen.
                   Erst beim Loslassen der linken Maustaste wird die Auswahl übernommen.
-                • Ein Linksklick außerhalb der markierten Noten hebt die Auswahl auf. Ein Klick auf eine
-                  andere Note ersetzt die bisherige Auswahl durch diese Note.
+                • Ein Linksklick außerhalb der markierten Noten hebt die Auswahl auf und schließt das
+                  Auswahlmenü. Ein Klick auf eine andere Note wählt diese Note aus.
                 • Mit einem Rechtsklick auf ein markiertes Element öffnet sich das Auswahlmenü.
                   Dort stehen „Auswahl aufheben“ und „Ausgewählte Elemente löschen“ zur Verfügung.
 
@@ -368,6 +599,10 @@ public class Controller {
                 • Ohne Auswahl wird das Zeichen an der nächsten freien Position eingefügt.
                   Bei einer Auswahl ersetzt es die markierten Noten oder Zeichen.
                 • „Pausenstrich“ fügt einen Pausenstrich an der aktuellen Einfügeposition ein.
+                • Einen markierten Pausenstrich mit gedrückter linker Maustaste zu einer Note ziehen:
+                  In ihrer Nähe rastet er ein.
+                • Rechtsklick auf den Pausenstrich und „Pausenstrich frei platzieren“ wählen,
+                  dann mit der linken Maustaste an eine beliebige Stelle der Seite ziehen.
                 • Ein Pausenstrich kann mit der rechten Maustaste und „Pausenstrich löschen“ entfernt werden.
                 • Das Wiederholungszeichen kann auf die Seite gezogen werden; dadurch wird ein
                   Wiederholungsanfang eingefügt. Der Pausenstrich kann ebenfalls auf die Seite gezogen werden.
@@ -389,8 +624,10 @@ public class Controller {
                 • „Alle Noten der … Seite löschen“ leert nach einer Sicherheitsabfrage die aktive Seite,
                   einschließlich Noten, Pausenstrichen, Bögen und Texten.
                 • Markierte Elemente lassen sich alternativ über das Rechtsklick-Menü löschen.
-                • Backspace und Entf löschen immer die letzte Eingabe der aktiven Seite, auch bei einer Auswahl.
+                • Backspace und Entf löschen markierte Noten, Pausenstriche, Wiederholungszeichen oder Freitext.
+                  Ohne Auswahl löschen sie die letzte Eingabe der aktiven Seite.
                   In Textfeldern löschen diese Tasten nur Text.
+                • Escape hebt eine Auswahl auf, ohne Elemente zu löschen.
 
                 Speichern, Laden und Drucken
                 • „Speichern“ öffnet die Dateiauswahl und speichert Noten, Zeichen, Bögen, Texte und Kopfzeilen.
@@ -448,7 +685,7 @@ public class Controller {
             // Die Kopfzeilenfelder müssen vor den vollflächigen Zeichenebenen liegen.
             field.toFront();
             field.setFocusTraversable(true);
-            field.textProperty().addListener((observable, oldValue, newValue) -> markDocumentDirty());
+            field.textProperty().addListener((observable, oldValue, newValue) -> recordPageTextEdit(field, oldValue));
             field.setOnMousePressed(event -> field.requestFocus());
             field.setOnAction(event -> field.getParent().requestFocus());
         }
@@ -510,6 +747,7 @@ public class Controller {
             if (event.getButton() != MouseButton.PRIMARY) {
                 return;
             }
+            draggingTextHistoryRecorded = false;
             selectTextAnnotation(text);
             Point2D point = annotationOverlay.sceneToLocal(event.getSceneX(), event.getSceneY());
             text.setUserData("TEXT|" + encodeText(text.getText()));
@@ -521,7 +759,10 @@ public class Controller {
             if (!event.isPrimaryButtonDown()) {
                 return;
             }
-            markDocumentDirty();
+            if (!draggingTextHistoryRecorded) {
+                markDocumentDirty();
+                draggingTextHistoryRecorded = true;
+            }
             Point2D point = annotationOverlay.sceneToLocal(event.getSceneX(), event.getSceneY());
             double offsetX = text.getTranslateX();
             double offsetY = text.getTranslateY();
@@ -538,6 +779,7 @@ public class Controller {
             }
             text.setTranslateX(0);
             text.setTranslateY(0);
+            draggingTextHistoryRecorded = false;
             event.consume();
         });
     }
@@ -549,6 +791,7 @@ public class Controller {
             }
 
             ContextMenu menu = new ContextMenu();
+            registerContextMenuEscape(menu);
             MenuItem delete = new MenuItem("Text löschen");
             delete.setOnAction(actionEvent -> removeTextAnnotation(text));
             menu.getItems().add(delete);
@@ -720,6 +963,7 @@ public class Controller {
         }
 
         ContextMenu menu = new ContextMenu();
+        registerContextMenuEscape(menu);
         MenuItem delete = new MenuItem("Bogen löschen");
         delete.setOnAction(event -> deleteSlur(path));
         menu.getItems().add(delete);
@@ -729,10 +973,10 @@ public class Controller {
     }
 
     private void deleteSlur(Path path) {
-        boolean removed = slurAnnotations.removeIf(annotation -> annotation.path == path);
-        if (removed) {
+        if (slurAnnotations.stream().anyMatch(annotation -> annotation.path == path)) {
             markDocumentDirty();
         }
+        slurAnnotations.removeIf(annotation -> annotation.path == path);
         annotationOverlay.getChildren().remove(path);
         if (selectedSlurPath == path) {
             selectedSlurPath = null;
@@ -794,9 +1038,8 @@ public class Controller {
         selectionRectangle.setVisible(false);
         pageCanvas.getChildren().add(selectionRectangle);
 
-        // Eine Auswahl soll nicht bestehen bleiben, wenn außerhalb eines
-        // markierbaren Notenelements weitergearbeitet wird, z. B. in der
-        // Bedienleiste oder auf einer freien Stelle der Notenseite.
+        // Klicks außerhalb heben die Auswahl auf. Notenbuttons behalten sie,
+        // damit ihre anschließende Klickaktion die markierte Note ersetzen kann.
         pageCanvas.sceneProperty().addListener((observable, oldScene, newScene) -> {
             pressedKeys.clear();
             if (oldScene != null) {
@@ -858,17 +1101,59 @@ public class Controller {
     }
 
     private void clearSelectionWhenClickedOutsideNotes(MouseEvent event) {
-        if (event.getButton() == MouseButton.PRIMARY && !isElementSelectionTarget(event.getTarget())) {
+        if (event.getButton() == MouseButton.PRIMARY && activeContextMenu != null) {
+            activeContextMenu.hide();
+        }
+        if (event.getButton() == MouseButton.PRIMARY
+                && !isElementSelectionTarget(event.getTarget())
+                && !isNoteInputButtonTarget(event.getTarget())) {
             clearAllSelection();
         }
     }
 
+    private void registerContextMenuEscape(ContextMenu menu) {
+        menu.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() == KeyCode.ESCAPE) {
+                menu.hide();
+                clearAllSelection();
+                event.consume();
+            }
+        });
+    }
+
+    private boolean isNoteInputButtonTarget(Object target) {
+        if (!(target instanceof Node node)) return false;
+        while (node != null) {
+            if (noteInputButtons.contains(node)) return true;
+            node = node.getParent();
+        }
+        return false;
+    }
+
     private void handleNoteKeyPressed(KeyEvent event) {
-        if (isTextInputTarget(event.getTarget()) || event.isMetaDown()
-                || (activeContextMenu != null && activeContextMenu.isShowing())) {
+        if (event.isMetaDown()) {
             return;
         }
         KeyCode code = event.getCode();
+        if (code == KeyCode.Z && event.isControlDown() && !event.isAltDown()
+                && !isDescendantOf(event.getTarget(), freeTextInput)) {
+            event.consume();
+            if (pressedKeys.add(code)) {
+                if (event.isShiftDown()) handleRedoAction(null);
+                else handleUndoAction(null);
+            }
+            return;
+        }
+        if (isTextInputTarget(event.getTarget())) return;
+        if (code == KeyCode.ESCAPE && (!selectedNoteContainers.isEmpty()
+                || !selectedPauseMarkers.isEmpty() || selectedTextAnnotation != null
+                || selectedSlurPath != null || activeContextMenu != null)) {
+            if (activeContextMenu != null) activeContextMenu.hide();
+            clearAllSelection();
+            event.consume();
+            return;
+        }
+        if (activeContextMenu != null && activeContextMenu.isShowing()) return;
         String note = NOTE_KEYS.get(code);
         boolean plainKey = !event.isControlDown() && !event.isAltDown() && !event.isShiftDown();
         boolean delete = plainKey && (code == KeyCode.DELETE || code == KeyCode.BACK_SPACE);
@@ -882,7 +1167,13 @@ public class Controller {
             return;
         }
         if (delete) {
-            handleDeleteLastNoteAction(null);
+            if (selectedTextAnnotation != null) {
+                removeTextAnnotation(selectedTextAnnotation);
+            } else if (!selectedNoteContainers.isEmpty() || !selectedPauseMarkers.isEmpty()) {
+                deleteSelectedNotesAndCompact();
+            } else {
+                handleDeleteLastNoteAction(null);
+            }
         } else if (emptyBlock) {
             handleEmptyBlockAction(null);
         } else {
@@ -911,12 +1202,21 @@ public class Controller {
         }
     }
 
+    private boolean isDescendantOf(Object target, Node ancestor) {
+        if (!(target instanceof Node node) || ancestor == null) return false;
+        while (node != null) {
+            if (node == ancestor) return true;
+            node = node.getParent();
+        }
+        return false;
+    }
+
     private boolean isTextInputTarget(Object target) {
         if (!(target instanceof Node node)) {
             return false;
         }
         while (node != null) {
-            if (node instanceof TextInputControl) {
+            if (node instanceof TextInputControl || node instanceof ComboBoxBase<?> || node instanceof Spinner<?> || node instanceof Slider) {
                 return true;
             }
             node = node.getParent();
@@ -1132,12 +1432,25 @@ public class Controller {
         markDocumentDirty();
         // Der Pausenstrich bekommt bewusst keinen eigenen Grid-Slot. Er wird
         // als freies Overlay genau in die Lücke zwischen zwei Noten gelegt.
+        PauseMarker marker = createPauseMarker(activeGridPane, columnOffset, rowOffset);
+        positionPauseMarker(marker);
+    }
+
+    private PauseMarker createPauseMarker(GridPane grid, int column, int row) {
         Line pauseLine = new Line(0, 0, 0, 16);
         pauseLine.setStroke(Color.BLACK);
         pauseLine.setStrokeWidth(2.0);
         pauseLine.setManaged(false);
+        pauseLine.setPickOnBounds(true);
+        PauseMarker marker = new PauseMarker(grid, pauseLine, column, row);
+        installPauseHandlers(marker);
+        pauseMarkers.add(marker);
+        pauseOverlay.getChildren().add(pauseLine);
+        return marker;
+    }
 
-        PauseMarker marker = new PauseMarker(activeGridPane, pauseLine, columnOffset, rowOffset);
+    private void installPauseHandlers(PauseMarker marker) {
+        Line pauseLine = marker.line;
         pauseLine.setOnMouseClicked(event -> {
             if (event.getButton() == MouseButton.PRIMARY) {
                 selectPauseMarker(marker);
@@ -1147,15 +1460,63 @@ public class Controller {
                 event.consume();
             }
         });
-        pauseMarkers.add(marker);
-        pauseOverlay.getChildren().add(pauseLine);
-        positionPauseMarker(marker);
+        pauseLine.setOnMouseDragged(event -> {
+            if (!event.isPrimaryButtonDown()) return;
+            if (!marker.dragging) {
+                markDocumentDirty();
+                marker.dragging = true;
+            }
+            Point2D position = pauseOverlay.sceneToLocal(event.getSceneX(), event.getSceneY());
+            pauseLine.setLayoutX(Math.max(0, Math.min(PAGE_WIDTH, position.getX())));
+            pauseLine.setLayoutY(Math.max(0, Math.min(PAGE_HEIGHT - 16, position.getY())));
+            event.consume();
+        });
+        pauseLine.setOnMouseReleased(event -> {
+            if (event.getButton() != MouseButton.PRIMARY || !marker.dragging) return;
+            if (marker.free) {
+                marker.grid = pauseLine.getLayoutX() < PAGE_WIDTH / 2 ? Gridpane1 : Gridpane2;
+                documentDirty = true;
+            } else if (!snapPauseMarkerToNearestNote(marker)) {
+                positionPauseMarker(marker);
+            }
+            marker.dragging = false;
+            event.consume();
+        });
+    }
 
-        // Der nächste Ton bleibt in derselben Spalte. Der Strich sitzt nur
-        // in der Lücke davor und darf deshalb keine Spalte verbrauchen.
+    private boolean snapPauseMarkerToNearestNote(PauseMarker marker) {
+        double bestDistance = Double.POSITIVE_INFINITY;
+        GridPane bestGrid = null;
+        int bestColumn = -1, bestRow = -1;
+        for (GridPane grid : List.of(Gridpane1, Gridpane2)) {
+            for (Node node : grid.getChildren()) {
+                if (!(node instanceof StackPane pane) || !isSelectableContainer(pane) || isRepeatMarker(pane)) continue;
+                Integer column = GridPane.getColumnIndex(node), row = GridPane.getRowIndex(node);
+                if (column == null || row == null) continue;
+                Bounds bounds = pauseOverlay.sceneToLocal(node.localToScene(node.getBoundsInLocal()));
+                double x = bounds.getMinX() - grid.getHgap() / 2.0;
+                double y = bounds.getMinY() - 6;
+                double distance = Math.hypot(marker.line.getLayoutX() - x, marker.line.getLayoutY() - y);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestGrid = grid;
+                    bestColumn = column;
+                    bestRow = row;
+                }
+            }
+        }
+        if (bestGrid == null || bestDistance > 35) return false;
+        if (marker.dragging) documentDirty = true;
+        else markDocumentDirty();
+        marker.grid = bestGrid;
+        marker.column = bestColumn;
+        marker.row = bestRow;
+        positionPauseMarker(marker);
+        return true;
     }
 
     private void positionPauseMarker(PauseMarker marker) {
+        if (marker.free) return;
         GridPane grid = marker.grid;
         grid.applyCss();
         grid.layout();
@@ -1198,16 +1559,17 @@ public class Controller {
     }
 
     private void removePauseMarker(GridPane grid, int column, int row) {
-        boolean removed = pauseMarkers.removeIf(marker -> {
+        if (pauseMarkers.stream().anyMatch(marker -> marker.grid == grid
+                && marker.column == column && marker.row == row)) {
+            markDocumentDirty();
+        }
+        pauseMarkers.removeIf(marker -> {
             boolean matches = marker.grid == grid && marker.column == column && marker.row == row;
             if (matches) {
                 pauseOverlay.getChildren().remove(marker.line);
             }
             return matches;
         });
-        if (removed) {
-            markDocumentDirty();
-        }
     }
 
     private void showPauseContextMenu(PauseMarker marker, double screenX, double screenY) {
@@ -1216,9 +1578,27 @@ public class Controller {
         }
 
         ContextMenu menu = new ContextMenu();
+        registerContextMenuEscape(menu);
+        MenuItem placement = new MenuItem(marker.free ? "Pausenstrich an Note einrasten" : "Pausenstrich frei platzieren");
+        placement.setOnAction(event -> {
+            if (marker.free) {
+                markDocumentDirty();
+                marker.free = false;
+                boolean wasHistorySuspended = historySuspended;
+                historySuspended = true;
+                try {
+                    if (!snapPauseMarkerToNearestNote(marker)) marker.free = true;
+                } finally {
+                    historySuspended = wasHistorySuspended;
+                }
+            } else {
+                markDocumentDirty();
+                marker.free = true;
+            }
+        });
         MenuItem delete = new MenuItem("Pausenstrich löschen");
         delete.setOnAction(event -> removePauseMarker(marker));
-        menu.getItems().add(delete);
+        menu.getItems().addAll(placement, delete);
         activeContextMenu = menu;
         menu.setOnHidden(event -> {
             if (activeContextMenu == menu) {
@@ -1229,10 +1609,10 @@ public class Controller {
     }
 
     private void removePauseMarker(PauseMarker marker) {
+        if (pauseMarkers.contains(marker)) markDocumentDirty();
         if (pauseMarkers.remove(marker)) {
             pauseOverlay.getChildren().remove(marker.line);
             selectedPauseMarkers.remove(marker);
-            markDocumentDirty();
         }
     }
 
@@ -1320,6 +1700,7 @@ public class Controller {
     private void handleWiederholungszeichenAction(ActionEvent event) {
 
         ContextMenu menu = new ContextMenu();
+        registerContextMenuEscape(menu);
 
         MenuItem einzelstrich = new MenuItem("Normaler Strich |");
         MenuItem doppelstrich = new MenuItem("Doppelstrich ||");
@@ -1349,11 +1730,11 @@ public class Controller {
     }
 
     private void addOrReplaceRepeatMarker(Wiederholungsart art) {
-        markDocumentDirty();
         if (selectedNoteContainers.isEmpty()) {
             addWiederholungszeichen(art);
             return;
         }
+        markDocumentDirty();
 
         Set<StackPane> selected = Set.copyOf(selectedNoteContainers);
         Set<GridPane> affectedGrids = selected.stream()
@@ -1551,22 +1932,26 @@ public class Controller {
 
     @FXML
     private void handleEmptyBlockAction(ActionEvent event) {
-        // Nach dem Abstand muss auf dieser Seite noch ein neuer Marsch beginnen können.
+        // Der leere Block selbst muss vollständig auf die Seite passen.
+        // Ein weiterer Marsch danach ist in der letzten Zeile nicht erforderlich.
         int nextRow = rowOffset + (columnOffset == 0 ? 17 : 34);
-        if (nextRow >= 119) {
-            keyboardStatus.setText("Für einen leeren Block und den neuen Marsch reicht der Platz nicht. Bitte die andere Seite wählen.");
+        if (nextRow > 120) {
+            keyboardStatus.setText("Für einen vollständigen leeren Notenblock reicht der Platz nicht. Bitte die andere Seite wählen.");
             return;
         }
         clearAllSelection();
         addEmptyBlock();
-        keyboardStatus.setText("Ein Notenblock bleibt leer. Der nächste Marsch beginnt im folgenden Block.");
+        keyboardStatus.setText(nextRow == 120
+                ? "Die letzte Zeile bleibt als Notenblock leer. Für weitere Noten bitte die andere Seite wählen."
+                : "Ein Notenblock bleibt leer. Der nächste Marsch beginnt im folgenden Block.");
     }
 
     private void addEmptyBlock() {
-        if (rowOffset >= 119) {
+        int nextRow = rowOffset + (columnOffset == 0 ? 17 : 34);
+        if (rowOffset >= 119 || nextRow > 120) {
             return;
         }
-        int nextRow = Math.min(120, rowOffset + (columnOffset == 0 ? 17 : 34));
+        markDocumentDirty();
         StackPane owner = null;
         // Unsichtbare Slots bewahren Breite und Höhe auch ohne Druck-Auffüllung.
         // Nur der erste Slot trägt den Dateitoken; der ganze Abstand ist eine Eingabe.
@@ -1585,7 +1970,43 @@ public class Controller {
             advanceGridPosition();
         }
         activeGridPane.setHgap(NOTE_GAP);
-        markDocumentDirty();
+        refreshEmptyBlockGuides();
+    }
+
+    private void refreshEmptyBlockGuides() {
+        emptyBlockOverlay.getChildren().clear();
+        for (GridPane grid : List.of(Gridpane1, Gridpane2)) {
+            for (Node node : grid.getChildren()) {
+                if (!(node instanceof StackPane owner) || !EMPTY_BLOCK.equals(owner.getUserData())) {
+                    continue;
+                }
+                int ownerColumn = GridPane.getColumnIndex(owner);
+                int blankRow = GridPane.getRowIndex(owner) + (ownerColumn == 0 ? 0 : 17);
+                Node rowStart = grid.getChildren().stream()
+                        .filter(slot -> slot.getProperties().get(EMPTY_BLOCK_OWNER) == owner
+                                && Integer.valueOf(0).equals(GridPane.getColumnIndex(slot))
+                                && Integer.valueOf(blankRow).equals(GridPane.getRowIndex(slot)))
+                        .findFirst().orElse(null);
+                if (rowStart == null) {
+                    continue;
+                }
+
+                Label guide = new Label(EMPTY_BLOCK_GUIDE);
+                guide.setAlignment(Pos.CENTER);
+                guide.setPrefSize(EMPTY_BLOCK_GUIDE_WIDTH, 30);
+                guide.setMouseTransparent(true);
+                guide.setManaged(false);
+                guide.resize(EMPTY_BLOCK_GUIDE_WIDTH, 30);
+                guide.setStyle("-fx-background-color: #E9F3FF; -fx-border-color: #4677A8; "
+                        + "-fx-border-style: dashed; -fx-border-radius: 5px; -fx-background-radius: 5px; "
+                        + "-fx-text-fill: #173B61; -fx-font-size: 14px; -fx-font-weight: bold;");
+                guide.layoutXProperty().bind(grid.layoutXProperty());
+                guide.layoutYProperty().bind(Bindings.createDoubleBinding(
+                        () -> grid.getLayoutY() + rowStart.getBoundsInParent().getMinY() + 28,
+                        grid.layoutYProperty(), rowStart.boundsInParentProperty()));
+                emptyBlockOverlay.getChildren().add(guide);
+            }
+        }
     }
 
     private void setupAllNoteButtons() {
@@ -1600,7 +2021,7 @@ public class Controller {
         }
     }
     private void setupNoteButton(Button button) {
-
+        noteInputButtons.add(button);
         button.setOnMouseClicked(event -> {
 
             String noteName = button.getText();
@@ -1622,6 +2043,7 @@ public class Controller {
         }
 
         ContextMenu menu = new ContextMenu();
+        registerContextMenuEscape(menu);
         activeContextMenu = menu;
 
         boolean allowOktav = !NO_OKTAV_NOTES.contains(baseNote);
@@ -1721,6 +2143,7 @@ public class Controller {
         }
 
         ContextMenu menu = new ContextMenu();
+        registerContextMenuEscape(menu);
         MenuItem clear = new MenuItem("Auswahl aufheben");
         MenuItem delete = new MenuItem("Ausgewählte Elemente löschen");
         MenuItem slur = new MenuItem("Bogen über Auswahl");
@@ -1756,27 +2179,25 @@ public class Controller {
 
         Set<StackPane> selected = Set.copyOf(selectedNoteContainers);
         Set<PauseMarker> selectedPauses = Set.copyOf(selectedPauseMarkers);
+        for (PauseMarker marker : selectedPauses) {
+            removePauseMarker(marker);
+        }
+        if (selected.isEmpty()) {
+            clearAllSelection();
+            return;
+        }
         Set<GridPane> affectedGrids = selected.stream()
                 .map(this::findNoteGrid)
                 .filter(Objects::nonNull)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        selectedPauses.stream()
-                .map(marker -> marker.grid)
-                .forEach(affectedGrids::add);
 
         for (GridPane grid : affectedGrids) {
             Set<NoteSlot> selectedSlots = selected.stream()
                     .filter(note -> findNoteGrid(note) == grid)
                     .map(note -> new NoteSlot(GridPane.getColumnIndex(note), GridPane.getRowIndex(note)))
                     .collect(java.util.stream.Collectors.toSet());
-            Set<NoteSlot> selectedPauseSlots = selectedPauses.stream()
-                    .filter(marker -> marker.grid == grid)
-                    .map(marker -> new NoteSlot(marker.column, marker.row))
-                    .collect(java.util.stream.Collectors.toSet());
             List<SerializedGridToken> remainingTokens = collectGridTokens(grid).stream()
-                    .filter(token -> token.pause()
-                            ? !selectedPauseSlots.contains(new NoteSlot(token.column(), token.row()))
-                            : !isSelectableToken(token.token()) ||
+                    .filter(token -> token.pause() || !isSelectableToken(token.token()) ||
                             !selectedSlots.contains(new NoteSlot(token.column(), token.row())))
                     .toList();
             rebuildGridCompact(grid, remainingTokens);
@@ -1806,7 +2227,7 @@ public class Controller {
             }
         }
         for (PauseMarker marker : pauseMarkers) {
-            if (marker.grid == grid) {
+            if (marker.grid == grid && !marker.free) {
                 tokens.add(new SerializedGridToken("PAUSENSTRICH", marker.column, marker.row, true));
             }
         }
@@ -1817,29 +2238,42 @@ public class Controller {
     }
 
     private void rebuildGridCompact(GridPane grid, List<SerializedGridToken> tokens) {
-        GridPane oldActiveGrid = activeGridPane;
-        int oldRowOffset = rowOffset;
-        int oldColumnOffset = columnOffset;
+        boolean wasHistorySuspended = historySuspended;
+        historySuspended = true;
+        try {
+            GridPane oldActiveGrid = activeGridPane;
+            int oldRowOffset = rowOffset;
+            int oldColumnOffset = columnOffset;
 
-        removePauseMarkersForGrid(grid);
-        removeSlursForGrid(grid);
-        grid.getChildren().clear();
+            List<PauseMarker> freeMarkers = pauseMarkers.stream()
+                    .filter(marker -> marker.grid == grid && marker.free).toList();
+            removePauseMarkersForGrid(grid);
+            removeSlursForGrid(grid);
+            grid.getChildren().clear();
 
-        activeGridPane = grid;
-        rowOffset = 1;
-        columnOffset = 0;
-        syncActivePageOffset();
-        for (SerializedGridToken token : tokens) {
-            appendSerializedToken(token.token());
-        }
-
-        if (oldActiveGrid != grid) {
-            activeGridPane = oldActiveGrid;
-            rowOffset = oldRowOffset;
-            columnOffset = oldColumnOffset;
-            if (oldActiveGrid != null) {
-                syncActivePageOffset();
+            activeGridPane = grid;
+            rowOffset = 1;
+            columnOffset = 0;
+            syncActivePageOffset();
+            for (SerializedGridToken token : tokens) {
+                appendSerializedToken(token.token());
             }
+            for (PauseMarker marker : freeMarkers) {
+                pauseMarkers.add(marker);
+                pauseOverlay.getChildren().add(marker.line);
+            }
+
+            if (oldActiveGrid != grid) {
+                activeGridPane = oldActiveGrid;
+                rowOffset = oldRowOffset;
+                columnOffset = oldColumnOffset;
+                if (oldActiveGrid != null) {
+                    syncActivePageOffset();
+                }
+            }
+            refreshEmptyBlockGuides();
+        } finally {
+            historySuspended = wasHistorySuspended;
         }
     }
 
@@ -1896,37 +2330,44 @@ public class Controller {
             return;
         }
 
-        // Den Einfügezeiger und beide Seitenpositionen sichern: Das Ersetzen
-        // darf nicht beeinflussen, wo die nächste neue Note landet.
-        GridPane oldActiveGrid = activeGridPane;
-        int oldRowOffset = rowOffset;
-        int oldColumnOffset = columnOffset;
-        int oldRowOffset1 = rowOffset1;
-        int oldColumnOffset1 = columnOffset1;
-        int oldRowOffset2 = rowOffset2;
-        int oldColumnOffset2 = columnOffset2;
+        recordUndoCheckpoint();
+        boolean wasHistorySuspended = historySuspended;
+        historySuspended = true;
+        try {
+            // Den Einfügezeiger und beide Seitenpositionen sichern: Das Ersetzen
+            // darf nicht beeinflussen, wo die nächste neue Note landet.
+            GridPane oldActiveGrid = activeGridPane;
+            int oldRowOffset = rowOffset;
+            int oldColumnOffset = columnOffset;
+            int oldRowOffset1 = rowOffset1;
+            int oldColumnOffset1 = columnOffset1;
+            int oldRowOffset2 = rowOffset2;
+            int oldColumnOffset2 = columnOffset2;
 
-        for (SelectedNoteTarget target : targets) {
-            removeNoteSlot(target.grid(), target.container(), target.column(), target.row());
-        }
-        clearNoteSelection();
+            for (SelectedNoteTarget target : targets) {
+                removeNoteSlot(target.grid(), target.container(), target.column(), target.row());
+            }
+            clearNoteSelection();
 
-        for (SelectedNoteTarget target : targets) {
-            activeGridPane = target.grid();
-            rowOffset = target.row();
-            columnOffset = target.column();
-            addNote(baseNote, modifier);
-        }
+            for (SelectedNoteTarget target : targets) {
+                activeGridPane = target.grid();
+                rowOffset = target.row();
+                columnOffset = target.column();
+                addNote(baseNote, modifier);
+            }
 
-        activeGridPane = oldActiveGrid;
-        rowOffset = oldRowOffset;
-        columnOffset = oldColumnOffset;
-        rowOffset1 = oldRowOffset1;
-        columnOffset1 = oldColumnOffset1;
-        rowOffset2 = oldRowOffset2;
-        columnOffset2 = oldColumnOffset2;
-        if (oldActiveGrid != null) {
-            syncActivePageOffset();
+            activeGridPane = oldActiveGrid;
+            rowOffset = oldRowOffset;
+            columnOffset = oldColumnOffset;
+            rowOffset1 = oldRowOffset1;
+            columnOffset1 = oldColumnOffset1;
+            rowOffset2 = oldRowOffset2;
+            columnOffset2 = oldColumnOffset2;
+            if (oldActiveGrid != null) {
+                syncActivePageOffset();
+            }
+        } finally {
+            historySuspended = wasHistorySuspended;
         }
     }
 
@@ -2242,6 +2683,7 @@ public class Controller {
             }
             clearAllSelection();
             syncActivePageOffset();
+            refreshEmptyBlockGuides();
         }
     }
 
@@ -2286,6 +2728,7 @@ public class Controller {
         });
         clearAllSelection();
         syncActivePageOffset();
+        refreshEmptyBlockGuides();
     }
 
     // Zeichne die neue Note in einer neuen Spalte (basierend auf columnOffset und rowOffset)
@@ -2435,9 +2878,7 @@ public class Controller {
         try {
             // Immer die feste DIN-A4-Seitenfläche drucken, nicht den variablen
             // Bildschirmbereich. Dadurch entstehen keine Randflächen vom UI.
-            pageCanvas.applyCss();
-            pageCanvas.layout();
-            WritableImage snapshot = pageCanvas.snapshot(null, null);
+            WritableImage snapshot = snapshotPageForPrint();
 
             Printer printer = Printer.getDefaultPrinter();
             if (printer == null) {
@@ -2485,6 +2926,18 @@ public class Controller {
         }
     }
 
+    private WritableImage snapshotPageForPrint() {
+        boolean guidesWereVisible = emptyBlockOverlay.isVisible();
+        emptyBlockOverlay.setVisible(false);
+        try {
+            pageCanvas.applyCss();
+            pageCanvas.layout();
+            return pageCanvas.snapshot(null, null);
+        } finally {
+            emptyBlockOverlay.setVisible(guidesWereVisible);
+        }
+    }
+
     private List<Node> prepareGridForPrint(GridPane grid, boolean fillWithCisDes) {
         return fillWithCisDes ? fillRemainingRowsWithCisDes(grid, 1, 0) : List.of();
     }
@@ -2521,6 +2974,7 @@ public class Controller {
             writeAnnotations(writer, "Seite2", Gridpane2);
 
             documentDirty = false;
+            savedDocumentSnapshot = captureDocumentSnapshot();
             System.out.println("Datei gespeichert: " + file.getAbsolutePath());
             return true;
         } catch (IOException e) {
@@ -2552,7 +3006,7 @@ public class Controller {
         }
 
         for (PauseMarker marker : pauseMarkers) {
-            if (marker.grid == grid) {
+            if (marker.grid == grid && !marker.free) {
                 tokens.add(new SerializedGridToken("PAUSENSTRICH", marker.column, marker.row, true));
             }
         }
@@ -2575,6 +3029,12 @@ public class Controller {
     }
 
     private void writeAnnotations(BufferedWriter writer, String page, GridPane grid) throws IOException {
+        for (PauseMarker marker : pauseMarkers) {
+            if (marker.grid == grid && marker.free) {
+                writer.write(page + ";PAUSE_FREI|" + marker.line.getLayoutX() + "|" + marker.line.getLayoutY());
+                writer.newLine();
+            }
+        }
         for (PageTextAnnotation annotation : textAnnotations) {
             if (annotation.grid == grid) {
                 Text text = annotation.text;
@@ -2652,6 +3112,22 @@ public class Controller {
         if ("PAUSENSTRICH".equals(token)) {
             addPauseStroke();
             return true;
+        }
+        if (token.startsWith("PAUSE_FREI|")) {
+            String[] parts = token.split("\\|", 3);
+            if (parts.length != 3 || activeGridPane == null) return false;
+            try {
+                double x = Double.parseDouble(parts[1]);
+                double y = Double.parseDouble(parts[2]);
+                if (!Double.isFinite(x) || !Double.isFinite(y)) return false;
+                PauseMarker marker = createPauseMarker(activeGridPane, columnOffset, rowOffset);
+                marker.free = true;
+                marker.line.setLayoutX(Math.max(0, Math.min(PAGE_WIDTH, x)));
+                marker.line.setLayoutY(Math.max(0, Math.min(PAGE_HEIGHT - 16, y)));
+                return true;
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
         }
         if (token.startsWith("TEXT|")) {
             String[] parts = token.split("\\|", 4);
@@ -2771,6 +3247,7 @@ public class Controller {
         removeAnnotationsForGrid(Gridpane2);
         Gridpane1.getChildren().clear();
         Gridpane2.getChildren().clear();
+        refreshEmptyBlockGuides();
         notesSeite1.clear();
         notesSeite2.clear();
         clearPageTexts();
@@ -2791,6 +3268,8 @@ public class Controller {
         File file = fileChooser.showOpenDialog(printGridPaneButton.getScene().getWindow());
 
         if (file != null) {
+            recordUndoCheckpoint();
+            historySuspended = true;
             // Überschreiben bedeutet wirklich: erst beide Seiten leeren,
             // danach ausschließlich die Datei neu einlesen.
             clearAllPagesBeforeOverwrite();
@@ -2858,6 +3337,7 @@ public class Controller {
                 }
                 restorePendingSlurs(pendingSlurs);
                 documentDirty = false;
+                savedDocumentSnapshot = captureDocumentSnapshot();
                 System.out.println("Datei geladen: " + file.getAbsolutePath());
 
                 activeGridPane = Gridpane1;
@@ -2868,6 +3348,8 @@ public class Controller {
                 updatePageIndicatorPosition();
             } catch (IOException e) {
                 e.printStackTrace();
+            } finally {
+                historySuspended = false;
             }
         }
     }
@@ -2879,6 +3361,8 @@ public class Controller {
         File file = fileChooser.showOpenDialog(printGridPaneButton.getScene().getWindow());
 
         if (file != null) {
+            recordUndoCheckpoint();
+            historySuspended = true;
             List<PendingSlur> pendingSlurs = new ArrayList<>();
             try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                 String line;
@@ -2956,6 +3440,8 @@ public class Controller {
                 updatePageIndicatorPosition();
             } catch (IOException e) {
                 e.printStackTrace();
+            } finally {
+                historySuspended = false;
             }
         }
     }

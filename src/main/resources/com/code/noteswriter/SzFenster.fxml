@@ -15,6 +15,9 @@
 <?import javafx.scene.Group?>
 <?import javafx.scene.shape.Circle?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Slider?>
+<?import javafx.scene.control.Spinner?>
 
 <AnchorPane xmlns="http://javafx.com/javafx/16" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.code.noteswriter.Controller"
             style="-fx-background-color: #EEF3F8;">
@@ -54,6 +57,9 @@
                                    style="-fx-background-color: transparent; -fx-border-color: transparent; -fx-font-size: 22px; -fx-font-weight: bold;" />
                         <GridPane fx:id="Gridpane1" layoutX="24.0" layoutY="110.0" vgap="3"/>
                         <GridPane fx:id="Gridpane2" layoutX="655.0" layoutY="110.0" vgap="3"/>
+                        <Pane fx:id="emptyBlockOverlay" mouseTransparent="true"
+                              minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
+                              minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
                         <Pane fx:id="pauseOverlay" pickOnBounds="false"
                               minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                               minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
@@ -84,6 +90,10 @@
                         <Button fx:id="leftPageButton" text="Linke Seite" onAction="#handleSelectLeftPage" />
                         <Button fx:id="rightPageButton" text="Rechte Seite" onAction="#handleSelectRightPage" />
                     </HBox>
+                    <HBox spacing="8.0">
+                        <Button fx:id="undoButton" text="↶ Rückgängig" onAction="#handleUndoAction" />
+                        <Button fx:id="redoButton" text="↷ Wiederherstellen" onAction="#handleRedoAction" />
+                    </HBox>
                     <Button fx:id="deleteLastNoteButton" onAction="#handleDeleteLastNoteAction"
                             text="Letzte Note löschen" />
                     <Button fx:id="deleteAllNotesButton" onAction="#handleDeleteAllNotesAction"
@@ -91,7 +101,7 @@
                             style="-fx-font-weight: bold;" />
                     <Separator />
                     <Label text="Noten einfügen" style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #37474F;" />
-                    <Label text="Linksklick fügt die Note auf der aktiven Seite ein. Rechtsklick zeigt Varianten."
+                    <Label text="Linksklick fügt eine Note ein. Ist eine Note markiert, wird sie an ihrer Position ersetzt. Rechtsklick zeigt Varianten."
                            wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                     <VBox spacing="6.0"
                           style="-fx-padding: 10; -fx-background-color: #EEF5FB; -fx-background-radius: 8; -fx-border-color: #D7E6F2; -fx-border-radius: 8;">
@@ -120,7 +130,9 @@
                                style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
                         <Label text="Oktav + lang/kurz: Umschalt zusammen mit Strg oder Alt"
                                wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
-                        <Label text="Backspace / Entf  →  letzte Eingabe löschen"
+                        <Label text="Backspace / Entf  →  Auswahl löschen; Escape  →  Auswahl aufheben"
+                               wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
+                        <Label text="Strg + Z  →  Rückgängig; Strg + Umschalt + Z  →  Wiederherstellen"
                                wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                     </VBox>
                     <Label fx:id="keyboardStatus" text="Tastenkürzel gelten außerhalb von Textfeldern. C spielt C1."
@@ -151,7 +163,7 @@
                     </FlowPane>
                     <Button fx:id="emptyBlockButton" text="Leerer Notenblock (Enter)"
                             onAction="#handleEmptyBlockAction" />
-                    <Label text="Schließt den aktuellen Block ab und lässt einen ganzen Block für den nächsten Marsch frei."
+                    <Label text="Schließt den aktuellen Block ab und lässt eine ganze Zeile frei – auch als letzte Zeile der Seite."
                            wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                     <Separator />
                     <Label text="Wiederholungszeichen, Pausenstrich"
@@ -167,6 +179,29 @@
                     <TextField fx:id="freeTextInput" promptText="Freien Text eingeben" />
                     <Button fx:id="addFreeTextButton" text="Text auf Seite einfügen"
                             onAction="#handleAddFreeTextAction" />
+                    <VBox spacing="7.0" style="-fx-padding: 10; -fx-background-color: #E6F4EE; -fx-background-radius: 8; -fx-text-base-color: #000000; -fx-text-background-color: #000000; -fx-text-inner-color: #000000;">
+                        <Label text="Flöte per Mikrofon eingeben" style="-fx-font-weight: bold; -fx-text-fill: #000000;" />
+                        <Label text="Mikrofon" labelFor="$microphoneDevice" style="-fx-text-fill: #000000;" />
+                        <ComboBox fx:id="microphoneDevice" maxWidth="Infinity" style="-fx-text-base-color: #000000; -fx-text-background-color: #000000;" />
+                        <Label text="Instrument" labelFor="$microphoneInstrument" style="-fx-text-fill: #000000;" />
+                        <ComboBox fx:id="microphoneInstrument" maxWidth="Infinity" style="-fx-text-base-color: #000000; -fx-text-background-color: #000000;" />
+                        <HBox spacing="8.0" alignment="CENTER_LEFT">
+                            <Label text="Kammerton A (Hz)" labelFor="$concertPitch" style="-fx-text-fill: #000000;" />
+                            <Spinner fx:id="concertPitch" prefWidth="95.0" editable="false" style="-fx-text-inner-color: #000000;" />
+                        </HBox>
+                        <HBox spacing="8.0" alignment="CENTER_LEFT">
+                            <Label text="Grifflage (Oktaven)" labelFor="$microphoneOctave" style="-fx-text-fill: #000000;" />
+                            <Spinner fx:id="microphoneOctave" prefWidth="95.0" editable="false" style="-fx-text-inner-color: #000000;" />
+                        </HBox>
+                        <Label text="Ces-Vorgabe: −1. D_Oktav ca. 550 Hz, D ca. 1124 Hz, D1 ca. 2207 Hz. Bei Instrumentwechsel wird die Vorgabe neu gesetzt."
+                               wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #000000;" />
+                        <Label text="Empfindlichkeit: links empfindlicher, rechts weniger" wrapText="true" style="-fx-text-fill: #000000;" />
+                        <Slider fx:id="microphoneThreshold" min="-60" max="-20" value="-40" />
+                        <Button fx:id="microphoneButton" text="Mikrofon starten" onAction="#handleMicrophoneAction" style="-fx-text-fill: #000000;" />
+                        <Label fx:id="microphoneStatus" text="Mikrofon aus. Es werden keine Tondateien gespeichert." wrapText="true" minHeight="40.0" style="-fx-text-fill: #000000;" />
+                        <Label text="Einzeltöne kurz halten. Gleicher Ton erneut: dazwischen kurz pausieren. Einfügen auf der aktiven Seite, ohne automatische Notenlängen."
+                               wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #000000;" />
+                    </VBox>
                     <Separator />
                     <Label text="Weitere Aktionen" style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #37474F;" />
                     <Button fx:id="Speichern" text="Speichern" onAction="#handleSaveToFile" />
