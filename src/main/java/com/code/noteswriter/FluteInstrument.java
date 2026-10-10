@@ -26,7 +26,8 @@ enum FluteInstrument {
             // of each pair is used as the transition so small pitch drift does
             // not move a tone into the neighbouring fingering.
             if (frequency >= 630 && frequency < 695) return 65;   // F_Oktav, ~670 Hz
-            if (frequency >= 695 && frequency < 745) return 66;   // Fis/Ges_Oktav, ~720 Hz
+            if (frequency >= 695 && frequency < 727) return 66;   // Fis/Ges_Oktav, ~718 Hz
+            if (frequency >= 727 && frequency < 762) return 67;   // G_Oktav, ~736 Hz
             if (frequency >= 1315 && frequency < 1375) return 77; // F, ~1350 Hz
             if (frequency >= 1375 && frequency < 1450) return 78; // Fis/Ges, ~1400 Hz
             if (frequency >= 2800 && frequency < 2930) return 89; // F1, ~2888 Hz

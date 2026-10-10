@@ -45,10 +45,10 @@ Windows-Datenschutzeinstellungen den Mikrofonzugriff für Desktop-Apps erlauben
 und das gewählte Eingabegerät prüfen.
 
 Nach Instrument- und Grifflagenkorrektur gilt intern: Die gemessenen
-Ces-Referenzen für F_Oktav, Fis/Ges_Oktav, F, Fis/Ges, F1 und G1 liegen bei
-ca. 670, 720, 1350, 1400, 2888 und 2972 Hz. Zwischen den Referenzen liegen
-die Umschaltgrenzen; dadurch bleibt F bei kleinen Schwankungen unterhalb der
-Fis/Ges-Grenze. Die übrigen Noten verwenden weiterhin die MIDI-Zuordnung.
+Ces-Referenzen für F_Oktav, Fis/Ges_Oktav, G_Oktav, F, Fis/Ges, F1 und G1 liegen bei
+ca. 670, 718, 736, 1350, 1400, 2888 und 2972 Hz. Die Grenze zwischen
+Fis/Ges_Oktav und G_Oktav liegt bei 727 Hz. Die übrigen Noten verwenden
+weiterhin die MIDI-Zuordnung.
 Bei Piccolo wird der gehörte Ton zuvor um eine Oktave nach unten versetzt.
 Außerhalb dieses Bereichs wird keine Note eingefügt; insbesondere fehlt im
 bisherigen Griffmodell ein tiefes C4. Die Alternative F_1 wird nicht automatisch
@@ -84,10 +84,10 @@ gewählt, da sich verschiedene Griffe derselben Tonhöhe akustisch nicht untersc
   - _Choose whether to fill unused slots with “C#/Db” or preserve empty spaces. Explicit blank blocks stay empty._
 
 - 🧹 **Löschen:** / _**Delete:**_
-  - Entferne einzelne oder alle Noten über Schaltflächen.
+  - Entferne markierte Noten über das Kontextmenü oder mit Entf/Backspace.
   - Entf/Backspace löscht zuerst markierte Noten, Pausenstriche oder Wiederholungszeichen; ohne Auswahl die letzte Eingabe.
   - Markierter Freitext lässt sich ebenfalls mit Entf/Backspace löschen. Escape hebt jede Markierung auf.
-  - _Remove individual notes or clear all notes using buttons._
+  - _Delete selected elements with Backspace/Delete or the context menu._
 
 - 🪶 **Design:**
   - JavaFX-Buttons mit Icons
@@ -176,18 +176,20 @@ _Each line represents a note and its corresponding page._
 ## 🧠 Hinweise zur Bedienung / _Usage Tips_
 
 - Klick auf Note → fügt Notenbild in die aktuelle Seite ein
+- Note per Drag-and-Drop auf eine Seite ziehen → an der Zeigerposition einfügen, auch zwischen vorhandenen Noten
+- „Tastenkürzel & Tonvarianten“ → Details bei Bedarf aufklappen
 - **„Linke Seite“ / „Rechte Seite“** → wählt die gewünschte Notenseite aus
 - **„Pausenstrich“** → fügt einen waagerechten Pausenstrich ein
-- **„Löschen“-Buttons** → letzte oder alle Noten entfernen
 - **↶ Rückgängig / ↷ Wiederherstellen** → Bearbeitungsschritte zurücknehmen oder erneut ausführen; auch mit **Strg+Z** und **Strg+Umschalt+Z**
 - **„Leerer Notenblock“ / Enter** → beendet den begonnenen Block und lässt eine ganze Zeile frei, auch als letzte Zeile der Seite; der freie Block ist im Editor beschriftet, die Beschriftung erscheint nicht im Druck/PDF
+- **Freitext** → nach dem Einfügen per Rechtsklick die Schriftgröße wählen oder eine eigene Größe zwischen 8 und 72 pt eingeben
 - **Backspace / Entf** → löscht die letzte Eingabe der aktiven Seite; ein zuletzt eingefügter Leerblock wird als Ganzes entfernt
 - **„Drucken / PDF exportieren“** → wahlweise mit Cis/Des auffüllen oder Leerstellen beibehalten; für PDF einen PDF-Drucker auswählen
 
 - _Click a note → adds the fingering image to the current page_
 - _**"Switch Page"** → toggles between left and right page_
 - _**"W-Open"** → inserts dividing lines_
-- _**"Delete" buttons** → remove the last or all notes_
+- _**Backspace / Delete** → delete the selection, or the last entry when nothing is selected_
 - _**"Print / export PDF"** → choose whether to fill unused slots; select a PDF printer to export PDF_
 
 ### Tastatur

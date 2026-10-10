@@ -18,6 +18,7 @@
 <?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Slider?>
 <?import javafx.scene.control.Spinner?>
+<?import javafx.scene.control.TitledPane?>
 
 <AnchorPane xmlns="http://javafx.com/javafx/16" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.code.noteswriter.Controller"
             style="-fx-background-color: #EEF3F8;">
@@ -83,9 +84,6 @@
                             <Button fx:id="helpButton" text="Hilfe &amp; Kontakt"
                                     onAction="#handleHelpAction" />
                     </VBox>
-                    <Label text="Aktive Notenseite" style="-fx-font-size: 13px; -fx-text-fill: #607D8B;" />
-                    <Label fx:id="pageIndicator" text="Linke Seite"
-                           style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 8 12;" />
                     <HBox spacing="8.0">
                         <Button fx:id="leftPageButton" text="Linke Seite" onAction="#handleSelectLeftPage" />
                         <Button fx:id="rightPageButton" text="Rechte Seite" onAction="#handleSelectRightPage" />
@@ -94,19 +92,15 @@
                         <Button fx:id="undoButton" text="↶ Rückgängig" onAction="#handleUndoAction" />
                         <Button fx:id="redoButton" text="↷ Wiederherstellen" onAction="#handleRedoAction" />
                     </HBox>
-                    <Button fx:id="deleteLastNoteButton" onAction="#handleDeleteLastNoteAction"
-                            text="Letzte Note löschen" />
-                    <Button fx:id="deleteAllNotesButton" onAction="#handleDeleteAllNotesAction"
-                            text="Alle Noten der linken Seite löschen"
-                            style="-fx-font-weight: bold;" />
                     <Separator />
                     <Label text="Noten einfügen" style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #37474F;" />
-                    <Label text="Linksklick fügt eine Note ein. Ist eine Note markiert, wird sie an ihrer Position ersetzt. Rechtsklick zeigt Varianten."
+                    <Label text="Linksklick fügt eine Note ein; eine markierte Note wird ersetzt. Ziehen platziert sie auch zwischen vorhandenen Noten. Rechtsklick zeigt Varianten."
                            wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
-                    <VBox spacing="6.0"
-                          style="-fx-padding: 10; -fx-background-color: #EEF5FB; -fx-background-radius: 8; -fx-border-color: #D7E6F2; -fx-border-radius: 8;">
-                        <Label text="Tastenkürzel"
-                               style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1565C0;" />
+                    <TitledPane text="Tastenkürzel &amp; Tonvarianten" expanded="false" animated="false"
+                                style="-fx-font-size: 13px; -fx-font-weight: bold;">
+                        <content>
+                          <VBox spacing="6.0" style="-fx-padding: 8; -fx-background-color: #EEF5FB;">
+                        <Label text="Tastenkürzel" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1565C0;" />
                         <Label text="Grundtöne:  C · D · E · F · G · A · H"
                                style="-fx-font-size: 12px; -fx-text-fill: #37474F;" />
                         <Label text="B = Ais/B"
@@ -134,7 +128,9 @@
                                wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                         <Label text="Strg + Z  →  Rückgängig; Strg + Umschalt + Z  →  Wiederherstellen"
                                wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
-                    </VBox>
+                          </VBox>
+                        </content>
+                    </TitledPane>
                     <Label fx:id="keyboardStatus" text="Tastenkürzel gelten außerhalb von Textfeldern. C spielt C1."
                            wrapText="true" minHeight="32.0" style="-fx-font-size: 12px; -fx-text-fill: #1565C0;" />
                     <FlowPane hgap="5.0" vgap="6.0" prefWrapLength="315.0">
@@ -174,7 +170,7 @@
                         <Button fx:id="pauseStrokeButton" text="Pausenstrich"
                                 onAction="#handlePauseStrokeAction" />
                     </HBox>
-                    <Label text="Freien Text eingeben und anschließend auf der Seite verschieben. Rechtsklick löscht ihn."
+                    <Label text="Freien Text eingeben und anschließend auf der Seite verschieben. Rechtsklick ändert die Schriftgröße oder löscht ihn."
                            wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                     <TextField fx:id="freeTextInput" promptText="Freien Text eingeben" />
                     <Button fx:id="addFreeTextButton" text="Text auf Seite einfügen"

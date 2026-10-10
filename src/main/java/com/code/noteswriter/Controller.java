@@ -157,7 +157,6 @@ public class Controller {
     private Button redoButton;
     @FXML
     private TextField leftCircleText, rightCircleText, leftMarchText, rightMarchText, freeTextInput;
-    public Label pageIndicator;
 
     // DIN-A4-Landschaftsfläche des bisherigen Hintergrunds (1290 x 910 px).
     // Bild und Noten werden nicht mehr gestreckt, sondern gemeinsam skaliert.
@@ -252,8 +251,7 @@ public class Controller {
     @FXML
     public Button Cis_Des, D, Dis_Es, E,
             F, F_1, Fis_Ges, G, Gis_As, A, Ais_B, H, C1, Cis_Des1, D1, Dis_Es1, E1, Fis_Ges1, F1, G1, Gis_As1, A1,
-            Speichern, Laden, printGridPaneButton, deleteLastNoteButton,
-            deleteAllNotesButton, Wiederholungszeichen, leftPageButton, rightPageButton,
+            Speichern, Laden, printGridPaneButton, Wiederholungszeichen, leftPageButton, rightPageButton,
             pauseStrokeButton, repeatStartButton, repeatEndButton,
             addFreeTextButton, helpButton, emptyBlockButton;
     @FXML
@@ -472,8 +470,6 @@ public class Controller {
         styleButtonsOtherButtons(Speichern);
         styleButtonsOtherButtons(Laden);
         styleButtonsOtherButtons(printGridPaneButton);
-        styleButtonsOtherButtons(deleteLastNoteButton);
-        styleButtonsOtherButtons(deleteAllNotesButton);
         styleButtonsOtherButtons(undoButton);
         styleButtonsOtherButtons(redoButton);
         styleButtonsOtherButtons(Wiederholungszeichen);
@@ -483,10 +479,7 @@ public class Controller {
         styleHelpButton(helpButton);
         stylePageButton(leftPageButton);
         stylePageButton(rightPageButton);
-        deleteAllNotesButton.setPrefWidth(300);
-        deleteAllNotesButton.setMaxWidth(Double.MAX_VALUE);
         setupPageTextFields();
-        pageIndicator.setTextFill(Color.BLUE);
         addIconsToNoteButtons();
         setupTooltips();
         setupDragAndDrop();
@@ -500,9 +493,7 @@ public class Controller {
         rightPageButton.setTooltip(new Tooltip("Rechte Notenseite aktivieren"));
         undoButton.setTooltip(new Tooltip("Letzte Änderung rückgängig machen (Strg+Z)"));
         redoButton.setTooltip(new Tooltip("Rückgängig gemachte Änderung wiederherstellen (Strg+Umschalt+Z)"));
-        deleteLastNoteButton.setTooltip(new Tooltip("Letzte Eingabe der aktiven Seite löschen · Backspace / Entf löscht zuerst markierte Elemente"));
         emptyBlockButton.setTooltip(new Tooltip("Aktuellen Block abschließen und eine ganze Zeile frei lassen, auch am Seitenende · Enter"));
-        deleteAllNotesButton.setTooltip(new Tooltip("Alle Noten, Pausenstriche und Beschriftungen der aktiven Seite löschen"));
         Wiederholungszeichen.setTooltip(new Tooltip("Normalen Strich oder Wiederholungszeichen auswählen"));
         pauseStrokeButton.setTooltip(new Tooltip("Pausenstrich an der aktuellen Position einfügen"));
         addFreeTextButton.setTooltip(new Tooltip("Den Text aus dem Eingabefeld auf der Seite platzieren"));
@@ -611,7 +602,8 @@ public class Controller {
                 • Text in „Freien Text eingeben“ schreiben und „Text auf Seite einfügen“ anklicken.
                 • Der Text wird auf der aktiven Seite platziert.
                 • Einen Text mit gedrückter linker Maustaste an eine andere Stelle ziehen und dort loslassen.
-                • Mit der rechten Maustaste auf einen Text klicken und „Text löschen“ auswählen.
+                • Mit der rechten Maustaste auf einen Text klicken, um die Schriftgröße zu ändern
+                  oder „Text löschen“ auszuwählen.
 
                 Kopfzeilen ausfüllen
                 • In den beiden Kreisen können Buchstaben eingetragen werden.
@@ -619,13 +611,10 @@ public class Controller {
                 • Die Eingaben werden zusammen mit der Notenschrift gespeichert und gedruckt.
 
                 Löschen
-                • „Letzte Note löschen“ entfernt die zuletzt eingefügte Note der aktiven Seite.
-                • Wenn an der aktuellen Position ein Pausenstrich liegt, wird dieser entfernt.
-                • „Alle Noten der … Seite löschen“ leert nach einer Sicherheitsabfrage die aktive Seite,
-                  einschließlich Noten, Pausenstrichen, Bögen und Texten.
-                • Markierte Elemente lassen sich alternativ über das Rechtsklick-Menü löschen.
+                • Markierte Elemente lassen sich über das Rechtsklick-Menü löschen.
                 • Backspace und Entf löschen markierte Noten, Pausenstriche, Wiederholungszeichen oder Freitext.
-                  Ohne Auswahl löschen sie die letzte Eingabe der aktiven Seite.
+                  Ohne Auswahl löschen sie die letzte Eingabe der aktiven Seite,
+                  auch einen Pausenstrich an der aktuellen Position.
                   In Textfeldern löschen diese Tasten nur Text.
                 • Escape hebt eine Auswahl auf, ohne Elemente zu löschen.
 
@@ -678,8 +667,8 @@ public class Controller {
     private void setupPageTextFields() {
         leftCircleText.setPromptText("Buchstabe");
         rightCircleText.setPromptText("Buchstabe");
-        leftMarchText.setPromptText("z. B. Marschname");
-        rightMarchText.setPromptText("z. B. Marschname");
+        leftMarchText.setPromptText("Marschname");
+        rightMarchText.setPromptText("Marschname");
 
         for (TextField field : List.of(leftCircleText, rightCircleText, leftMarchText, rightMarchText)) {
             // Die Kopfzeilenfelder müssen vor den vollflächigen Zeichenebenen liegen.
@@ -718,9 +707,13 @@ public class Controller {
     }
 
     private void addTextAnnotation(String value, Point2D position) {
+        addTextAnnotation(value, position, 18);
+    }
+
+    private void addTextAnnotation(String value, Point2D position, int fontSize) {
         markDocumentDirty();
         Text text = new Text(value);
-        text.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+        text.setFont(Font.font("Arial", FontWeight.BOLD, fontSize));
         text.setFill(Color.BLACK);
         text.setLayoutX(position.getX());
         text.setLayoutY(position.getY());
@@ -792,9 +785,32 @@ public class Controller {
 
             ContextMenu menu = new ContextMenu();
             registerContextMenuEscape(menu);
+            Menu sizeMenu = new Menu("Schriftgröße");
+            for (int size : List.of(12, 14, 18, 24, 30, 36, 48)) {
+                MenuItem option = new MenuItem(size + " pt" +
+                        (Math.round(text.getFont().getSize()) == size ? " ✓" : ""));
+                option.setOnAction(actionEvent -> setTextAnnotationSize(text, size));
+                sizeMenu.getItems().add(option);
+            }
+            MenuItem customSize = new MenuItem("Andere Größe …");
+            customSize.setOnAction(actionEvent -> {
+                TextInputDialog dialog = new TextInputDialog(
+                        String.valueOf(Math.round(text.getFont().getSize())));
+                dialog.setTitle("Schriftgröße ändern");
+                dialog.setHeaderText("Schriftgröße für diesen Text (8–72 pt)");
+                dialog.setContentText("Größe:");
+                dialog.showAndWait().ifPresent(value -> {
+                    try {
+                        setTextAnnotationSize(text, Integer.parseInt(value.trim()));
+                    } catch (NumberFormatException ignored) {
+                        keyboardStatus.setText("Bitte eine ganze Zahl zwischen 8 und 72 eingeben.");
+                    }
+                });
+            });
+            sizeMenu.getItems().add(customSize);
             MenuItem delete = new MenuItem("Text löschen");
             delete.setOnAction(actionEvent -> removeTextAnnotation(text));
-            menu.getItems().add(delete);
+            menu.getItems().addAll(sizeMenu, new SeparatorMenuItem(), delete);
             activeContextMenu = menu;
             menu.setOnHidden(hiddenEvent -> {
                 if (activeContextMenu == menu) {
@@ -804,6 +820,18 @@ public class Controller {
             menu.show(text, event.getScreenX(), event.getScreenY());
             event.consume();
         });
+    }
+
+    private void setTextAnnotationSize(Text text, int fontSize) {
+        if (fontSize < 8 || fontSize > 72) {
+            keyboardStatus.setText("Bitte eine Schriftgröße zwischen 8 und 72 pt eingeben.");
+            return;
+        }
+        if (Math.round(text.getFont().getSize()) == fontSize) return;
+        markDocumentDirty();
+        text.setFont(Font.font("Arial", FontWeight.BOLD, fontSize));
+        text.setLayoutX(Math.max(4, Math.min(text.getLayoutX(),
+                PAGE_WIDTH - text.getLayoutBounds().getWidth() - 4)));
     }
 
     private void removeTextAnnotation(Text text) {
@@ -1386,14 +1414,14 @@ public class Controller {
             return false;
         }
 
-        // Die Seite wird anhand der Drop-Position gewählt. Danach wird das
-        // Element am nächsten freien Platz dieser Seite eingefügt.
-        selectPage(event.getX() < PAGE_WIDTH / 2.0 ? Gridpane1 : Gridpane2);
+        // Die Seite wird anhand der Drop-Position gewählt.
+        double pageX = pageCanvas.sceneToLocal(event.getSceneX(), event.getSceneY()).getX();
+        selectPage(pageX < PAGE_WIDTH / 2.0 ? Gridpane1 : Gridpane2);
 
         String[] payload = event.getDragboard().getString().split("\\|", 3);
         if (payload[0].equals("NOTE") && payload.length >= 2) {
-            addNote(payload[1], NoteModifier.NORMAL);
-            return true;
+            return insertDroppedNote(activeGridPane, payload[1],
+                    event.getSceneX(), event.getSceneY());
         }
         if (payload[0].equals("SPECIAL") && payload.length >= 2) {
             switch (payload[1]) {
@@ -1407,6 +1435,117 @@ public class Controller {
             return true;
         }
         return false;
+    }
+
+    private boolean insertDroppedNote(GridPane grid, String baseNote, double sceneX, double sceneY) {
+        List<SerializedGridToken> tokens = collectGridTokens(grid);
+        int insertionIndex = insertionIndexAt(grid, tokens, sceneX, sceneY);
+        List<SerializedGridToken> inserted = new ArrayList<>(tokens);
+        inserted.add(insertionIndex, new SerializedGridToken(baseNote + "|NORMAL", -1, -1, false));
+        if (!canFitGridTokens(inserted)) {
+            keyboardStatus.setText("Für diese Note ist auf der Seite kein Platz mehr.");
+            return false;
+        }
+
+        markDocumentDirty();
+        clearAllSelection();
+        int noteInsertionIndex = (int) tokens.subList(0, insertionIndex).stream()
+                .filter(token -> isNoteToken(token.token())).count();
+        rebuildGridKeepingSlurs(grid, tokens, inserted, noteInsertionIndex);
+        return true;
+    }
+
+    private void rebuildGridKeepingSlurs(GridPane grid, List<SerializedGridToken> previous,
+                                         List<SerializedGridToken> replacement, int noteInsertionIndex) {
+        // Die ausgewählten Noten eines Bogens werden über ihre Reihenfolge
+        // auf die neuen Rasterpositionen abgebildet.
+        List<SerializedGridToken> oldNotes = previous.stream()
+                .filter(token -> isNoteToken(token.token())).toList();
+        List<List<Integer>> slurIndices = slurAnnotations.stream()
+                .filter(annotation -> annotation.grid == grid)
+                .map(annotation -> annotation.slots.stream()
+                        .map(slot -> {
+                            for (int i = 0; i < oldNotes.size(); i++) {
+                                SerializedGridToken token = oldNotes.get(i);
+                                if (token.column() == slot.column() && token.row() == slot.row()) return i;
+                            }
+                            return -1;
+                        })
+                        .filter(index -> index >= 0).toList())
+                .filter(indices -> !indices.isEmpty()).toList();
+        rebuildGridCompact(grid, replacement);
+        List<SerializedGridToken> newNotes = collectGridTokens(grid).stream()
+                .filter(token -> isNoteToken(token.token())).toList();
+        for (List<Integer> indices : slurIndices) {
+            List<NoteSlot> slots = indices.stream()
+                    .map(index -> newNotes.get(noteInsertionIndex >= 0 && index >= noteInsertionIndex
+                            ? index + 1 : index))
+                    .map(token -> new NoteSlot(token.column(), token.row())).toList();
+            Path path = createSlurPath(grid, slots);
+            if (!path.getElements().isEmpty()) {
+                annotationOverlay.getChildren().add(path);
+                slurAnnotations.add(new SlurAnnotation(grid, path, slots));
+            }
+        }
+    }
+
+    private int insertionIndexAt(GridPane grid, List<SerializedGridToken> tokens,
+                                 double sceneX, double sceneY) {
+        List<SerializedGridToken> slots = tokens.stream().filter(token -> !token.pause()).toList();
+        if (slots.isEmpty()) return tokens.size();
+        grid.applyCss();
+        grid.layout();
+        Point2D point = grid.sceneToLocal(sceneX, sceneY);
+        Map<Integer, Double> rowCenters = new TreeMap<>();
+        for (SerializedGridToken slot : slots) {
+            Node node = findGridSlotNode(grid, slot.column(), slot.row());
+            if (node != null) {
+                Bounds bounds = node.getBoundsInParent();
+                rowCenters.putIfAbsent(slot.row(), bounds.getMinY() + bounds.getHeight() / 2.0);
+            }
+        }
+        if (rowCenters.isEmpty()) return tokens.size();
+        int nearestRow = rowCenters.entrySet().stream()
+                .min(Comparator.comparingDouble(entry -> Math.abs(entry.getValue() - point.getY())))
+                .orElseThrow().getKey();
+        double lastCenter = rowCenters.values().stream().mapToDouble(Double::doubleValue).max().orElse(0);
+        if (point.getY() > lastCenter + 48) return tokens.size();
+
+        for (SerializedGridToken slot : slots) {
+            if (slot.row() != nearestRow) continue;
+            Node node = findGridSlotNode(grid, slot.column(), slot.row());
+            if (node == null) continue;
+            Bounds bounds = node.getBoundsInParent();
+            if (point.getX() < bounds.getMinX() + bounds.getWidth() / 2.0) {
+                return tokens.indexOf(slot);
+            }
+        }
+        for (int i = 0; i < tokens.size(); i++) {
+            if (tokens.get(i).row() > nearestRow) return i;
+        }
+        return tokens.size();
+    }
+
+    private boolean canFitGridTokens(List<SerializedGridToken> tokens) {
+        int row = 1;
+        int column = 0;
+        for (SerializedGridToken token : tokens) {
+            if (token.pause()) continue;
+            if (EMPTY_BLOCK.equals(token.token())) {
+                row += column == 0 ? 17 : 34;
+                column = 0;
+                if (row > 120) return false;
+            } else {
+                if (row >= 119) return false;
+                if (column == 40) {
+                    column = 0;
+                    row += 17;
+                } else {
+                    column++;
+                }
+            }
+        }
+        return true;
     }
 
     @FXML
@@ -2475,17 +2614,15 @@ public class Controller {
     }
 
     private void styleButtonsOtherButtons(Button button) {
-        boolean destructive = button == deleteLastNoteButton || button == deleteAllNotesButton;
         boolean primary = button == Speichern || button == Laden || button == printGridPaneButton;
         boolean tool = button == Wiederholungszeichen || button == pauseStrokeButton || button == addFreeTextButton;
-        boolean bold = button == deleteAllNotesButton;
 
-        String normalBackground = destructive ? "#FFF1F2" : primary ? "#2563EB" : tool ? "#0F766E" : "#FFFFFF";
-        String normalBorder = destructive ? "#FDA4AF" : primary ? "#1D4ED8" : tool ? "#0D9488" : "#D5E0EC";
-        String normalText = destructive ? "#B42318" : (primary || tool) ? "#FFFFFF" : "#203040";
-        String hoverBackground = destructive ? "#FFE4E6" : primary ? "#1D4ED8" : tool ? "#115E59" : "#EEF4FB";
-        String hoverBorder = destructive ? "#FB7185" : primary ? "#1E40AF" : tool ? "#0F766E" : "#3B82F6";
-        String weight = bold ? "-fx-font-weight: bold; " : "-fx-font-weight: 600; ";
+        String normalBackground = primary ? "#2563EB" : tool ? "#0F766E" : "#FFFFFF";
+        String normalBorder = primary ? "#1D4ED8" : tool ? "#0D9488" : "#D5E0EC";
+        String normalText = (primary || tool) ? "#FFFFFF" : "#203040";
+        String hoverBackground = primary ? "#1D4ED8" : tool ? "#115E59" : "#EEF4FB";
+        String hoverBorder = primary ? "#1E40AF" : tool ? "#0F766E" : "#3B82F6";
+        String weight = "-fx-font-weight: 600; ";
 
         String normalStyle = "-fx-background-color: " + normalBackground + "; " +
                 "-fx-border-color: " + normalBorder + "; " +
@@ -2564,9 +2701,6 @@ public class Controller {
         button.setMaxWidth(68);
         button.setPrefHeight(100);
         button.setOnMouseExited(e -> styleButtonsNotes(button));
-        pageIndicator.setBackground(new Background(
-                new BackgroundFill(Color.LIGHTGRAY, new CornerRadii(5), Insets.EMPTY)));
-        pageIndicator.setStyle("-fx-font-size: 24px; -fx-font-weight: bold;");
     }
 
     @FXML
@@ -2603,29 +2737,7 @@ public class Controller {
             columnOffset = columnOffset2;
         }
 
-        updatePageIndicatorPosition();
-    }
-
-    private void updatePageIndicatorPosition() {
-        if (activeGridPane == Gridpane1) {
-            pageIndicator.setText("Linke Seite");
-            pageIndicator.setTextFill(Color.BLUE);
-        } else {
-            pageIndicator.setText("Rechte Seite");
-            pageIndicator.setTextFill(Color.RED);
-        }
-
         updatePageButtonStyles();
-        updateDeleteAllNotesButtonText();
-    }
-
-    private void updateDeleteAllNotesButtonText() {
-        if (deleteAllNotesButton == null || activeGridPane == null) {
-            return;
-        }
-
-        String pageName = activeGridPane == Gridpane1 ? "linken" : "rechten";
-        deleteAllNotesButton.setText("Alle Noten der " + pageName + " Seite löschen");
     }
 
     private void stylePageButton(Button button) {
@@ -2649,45 +2761,6 @@ public class Controller {
         rightPageButton.setStyle(activeGridPane == Gridpane2 ? selectedStyle : normalStyle);
     }
 
-    @FXML
-    private void handleDeleteAllNotesAction(ActionEvent event) {
-        boolean isLeft = (activeGridPane == Gridpane1);
-        String pageName = isLeft ? "Linke Seite" : "Rechte Seite";
-
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Alle Noten löschen");
-        alert.setHeaderText("Bist du sicher, dass du alle Noten löschen möchtest?");
-        alert.setContentText("Es werden alle Noten auf der folgenden Seite gelöscht: " + pageName + "\nDieser Vorgang kann nicht rückgängig gemacht werden.");
-
-        Optional<ButtonType> result = alert.showAndWait();
-        if (result.isPresent() && result.get() == ButtonType.OK) {
-            markDocumentDirty();
-            if (activeGridPane == Gridpane1) {
-                removePauseMarkersForGrid(Gridpane1);
-                removeAnnotationsForGrid(Gridpane1);
-                Gridpane1.getChildren().clear();
-                notesSeite1.clear();
-                rowOffset1 = 1;
-                columnOffset1 = 0;
-                rowOffset = rowOffset1;
-                columnOffset = columnOffset1;
-            } else {
-                removePauseMarkersForGrid(Gridpane2);
-                removeAnnotationsForGrid(Gridpane2);
-                Gridpane2.getChildren().clear();
-                notesSeite2.clear();
-                rowOffset2 = 1;
-                columnOffset2 = 0;
-                rowOffset = rowOffset2;
-                columnOffset = columnOffset2;
-            }
-            clearAllSelection();
-            syncActivePageOffset();
-            refreshEmptyBlockGuides();
-        }
-    }
-
-    @FXML
     private void handleDeleteLastNoteAction(ActionEvent event) {
         // Ein Pausenstrich verbraucht keine Spalte. Wenn er das letzte
         // eingefügte Element ist, liegt der Cursor daher noch genau auf ihm.
@@ -3039,7 +3112,8 @@ public class Controller {
             if (annotation.grid == grid) {
                 Text text = annotation.text;
                 writer.write(page + ";TEXT|" + encodeText(text.getText()) + "|" +
-                        text.getLayoutX() + "|" + text.getLayoutY());
+                        text.getLayoutX() + "|" + text.getLayoutY() + "|" +
+                        Math.round(text.getFont().getSize()));
                 writer.newLine();
             }
         }
@@ -3105,7 +3179,9 @@ public class Controller {
     }
 
     private boolean restoreSpecialToken(String token) {
-        if (EMPTY_BLOCK.equals(token)) {
+        if (EMPTY_BLOCK.equals(token) || token.startsWith(EMPTY_BLOCK + "|")) {
+            // Dateien mit kürzlich gespeicherter variabler Länge werden wieder
+            // als der ursprüngliche feste Leerblock geladen.
             addEmptyBlock();
             return true;
         }
@@ -3130,12 +3206,13 @@ public class Controller {
             }
         }
         if (token.startsWith("TEXT|")) {
-            String[] parts = token.split("\\|", 4);
-            if (parts.length == 4) {
+            String[] parts = token.split("\\|", 5);
+            if (parts.length == 4 || parts.length == 5) {
                 try {
                     addTextAnnotation(
                             decodeText(parts[1]),
-                            new Point2D(Double.parseDouble(parts[2]), Double.parseDouble(parts[3]))
+                            new Point2D(Double.parseDouble(parts[2]), Double.parseDouble(parts[3])),
+                            parts.length == 5 ? Math.max(8, Math.min(72, Integer.parseInt(parts[4]))) : 18
                     );
                     return true;
                 } catch (NumberFormatException ignored) {
@@ -3343,9 +3420,7 @@ public class Controller {
                 activeGridPane = Gridpane1;
                 rowOffset = rowOffset1;
                 columnOffset = columnOffset1;
-                pageIndicator.setText("Linke Seite");
-                pageIndicator.setTextFill(Color.BLUE);
-                updatePageIndicatorPosition();
+                updatePageButtonStyles();
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
@@ -3435,9 +3510,7 @@ public class Controller {
                 activeGridPane = Gridpane1;
                 rowOffset = rowOffset1;
                 columnOffset = columnOffset1;
-                pageIndicator.setText("Linke Seite");
-                pageIndicator.setTextFill(Color.BLUE);
-                updatePageIndicatorPosition();
+                updatePageButtonStyles();
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {

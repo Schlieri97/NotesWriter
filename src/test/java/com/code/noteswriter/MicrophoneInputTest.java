@@ -43,6 +43,25 @@ class MicrophoneInputTest {
         assertEquals(77, FluteInstrument.CES_FLUTE.gripMidi(1374, 440, -1));
         assertEquals(78, FluteInstrument.CES_FLUTE.gripMidi(1376, 440, -1));
     }
+
+    @Test void nearbyOctaveFisAndGStayDistinct() {
+        assertEquals(66, FluteInstrument.CES_FLUTE.gripMidi(718, 440, -1));
+        assertEquals(66, FluteInstrument.CES_FLUTE.gripMidi(726.9, 440, -1));
+        assertEquals(67, FluteInstrument.CES_FLUTE.gripMidi(727, 440, -1));
+        assertEquals(new FlutePitchMapping.Note("G", NoteModifier.OKTAV),
+                FlutePitchMapping.forMidi(FluteInstrument.CES_FLUTE.gripMidi(736, 440, -1)));
+        for (double frequency : new double[]{718, 736}) {
+            double[] samples = new double[PitchDetector.FRAME_SIZE];
+            for (int i = 0; i < samples.length; i++) {
+                double phase = 2 * Math.PI * frequency * i / PitchDetector.SAMPLE_RATE;
+                samples[i] = 0.3 * Math.sin(phase) + 0.1 * Math.sin(2 * phase);
+            }
+            double measured = PitchDetector.frequency(samples, 0.01);
+            assertEquals(frequency, measured, 3);
+            assertEquals(frequency == 718 ? 66 : 67,
+                    FluteInstrument.CES_FLUTE.gripMidi(measured, 440, -1));
+        }
+    }
     @Test void transposesCesAndPiccoloToWrittenPitch() {
         assertEquals(60, FluteInstrument.CES_FLUTE.writtenMidi(246.94, 440));
         assertEquals(67, FluteInstrument.CES_FLUTE.writtenMidi(369.994, 440));

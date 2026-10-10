@@ -9,6 +9,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
 import javafx.scene.image.WritableImage;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
@@ -221,6 +222,45 @@ class KeyboardAndExportTest {
                 assertFalse(overlay.getChildren().contains(text));
                 assertEquals(List.of("D|NORMAL"), tokens(controller.Gridpane1));
             }
+        });
+    }
+
+    @Test
+    void textSizeSurvivesSerializationAndUndo() throws Exception {
+        onFx(() -> {
+            ((TextField) root.lookup("#freeTextInput")).setText("Marschname");
+            controller.addFreeTextButton.fire();
+            Pane overlay = (Pane) root.lookup("#annotationOverlay");
+            Text text = (Text) overlay.getChildren().stream()
+                    .filter(Text.class::isInstance).findFirst().orElseThrow();
+            call("setTextAnnotationSize", text, 30);
+            assertEquals(30, text.getFont().getSize());
+            StringWriter data = new StringWriter();
+            BufferedWriter writer = new BufferedWriter(data);
+            call("writeAnnotations", writer, "Seite1", controller.Gridpane1);
+            writer.flush();
+            assertTrue(data.toString().trim().endsWith("|30"));
+            tap(KeyCode.Z, false, true, false);
+            Text restored = (Text) overlay.getChildren().stream()
+                    .filter(Text.class::isInstance).findFirst().orElseThrow();
+            assertEquals(18, restored.getFont().getSize());
+            tap(KeyCode.Z, true, true, false);
+            Text redone = (Text) overlay.getChildren().stream()
+                    .filter(Text.class::isInstance).findFirst().orElseThrow();
+            assertEquals(30, redone.getFont().getSize());
+        });
+    }
+
+    @Test
+    void oldTextFormatLoadsCorrectly() throws Exception {
+        onFx(() -> {
+            call("restoreSpecialToken", "TEXT|VGVzdA==|100|120");
+            call("restoreSpecialToken", "TEXT|TmV1|160|120|30");
+            Pane overlay = (Pane) root.lookup("#annotationOverlay");
+            List<Text> texts = overlay.getChildren().stream()
+                    .filter(Text.class::isInstance).map(Text.class::cast).toList();
+            assertEquals(List.of(18.0, 30.0), texts.stream()
+                    .map(text -> text.getFont().getSize()).toList());
         });
     }
 
@@ -526,6 +566,39 @@ class KeyboardAndExportTest {
     }
 
     @Test
+    void deleteButtonsAreGoneWhileKeyboardDeletionRemainsAvailable() throws Exception {
+        onFx(() -> {
+            assertNull(root.lookup("#deleteLastNoteButton"));
+            assertNull(root.lookup("#deleteAllNotesButton"));
+            assertTrue(((Pane) root.lookup("#emptyBlockOverlay")).isMouseTransparent());
+            tap(KeyCode.D);
+            tap(KeyCode.BACK_SPACE);
+            assertTrue(tokens(controller.Gridpane1).isEmpty());
+        });
+    }
+
+    @Test
+    void pageButtonsShowSelectionWithoutSeparateIndicator() throws Exception {
+        onFx(() -> {
+            assertNull(root.lookup("#pageIndicator"));
+            assertTrue(controller.leftPageButton.getStyle().contains("#1976D2"));
+            controller.rightPageButton.fire();
+            assertTrue(controller.rightPageButton.getStyle().contains("#1976D2"));
+            assertFalse(controller.leftPageButton.getStyle().contains("#1976D2"));
+        });
+    }
+
+    @Test
+    void formerVariableBlankTokenLoadsAsFixedBlankBlock() throws Exception {
+        onFx(() -> {
+            call("appendSerializedToken", "LEERBLOCK|5");
+            tap(KeyCode.E);
+            assertEquals(List.of("LEERBLOCK", "E|NORMAL"), tokens(controller.Gridpane1));
+            assertPosition(slot(controller.Gridpane1, "E|NORMAL"), 0, 18);
+        });
+    }
+
+    @Test
     void emptyBlockGuideAppearsOnBothPagesButNotInPrintSnapshot() throws Exception {
         onFx(() -> {
             Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
@@ -737,6 +810,49 @@ class KeyboardAndExportTest {
                 assertEquals(4, tokens(grid).size());
                 assertPosition(slot(grid, "A|NORMAL"), 3, 1);
             }
+        });
+    }
+
+    @Test
+    void droppedNoteInsertsAtPointerOnEitherPageAndSupportsUndo() throws Exception {
+        onFx(() -> {
+            TitledPane shortcuts = (TitledPane) root.lookup(".titled-pane");
+            assertNotNull(shortcuts);
+            assertFalse(shortcuts.isExpanded());
+            for (GridPane grid : List.of(controller.Gridpane1, controller.Gridpane2)) {
+                call("selectPage", grid);
+                tap(KeyCode.D);
+                tap(KeyCode.E);
+                tap(KeyCode.F);
+                root.layout();
+                var bounds = slot(grid, "E|NORMAL").localToScene(
+                        slot(grid, "E|NORMAL").getBoundsInLocal());
+                assertTrue((Boolean) call("insertDroppedNote", grid, "G",
+                        bounds.getMinX() + 1, bounds.getMinY() + bounds.getHeight() / 2));
+                assertEquals(List.of("D|NORMAL", "G|NORMAL", "E|NORMAL", "F|NORMAL"), tokens(grid));
+                assertPosition(slot(grid, "G|NORMAL"), 1, 1);
+                tap(KeyCode.Z, false, true, false);
+                assertEquals(List.of("D|NORMAL", "E|NORMAL", "F|NORMAL"), tokens(grid));
+            }
+        });
+    }
+
+    @Test
+    void droppedNoteKeepsExistingSlurAttachedToOriginalNotes() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            call("setSelectedNotes", List.of(slot(controller.Gridpane1, "D|NORMAL"),
+                    slot(controller.Gridpane1, "E|NORMAL")));
+            call("handleAddSlurAction", (Object) null);
+            root.layout();
+            var bounds = slot(controller.Gridpane1, "E|NORMAL").localToScene(
+                    slot(controller.Gridpane1, "E|NORMAL").getBoundsInLocal());
+            assertTrue((Boolean) call("insertDroppedNote", controller.Gridpane1, "F",
+                    bounds.getMinX() + 1, bounds.getMinY() + bounds.getHeight() / 2));
+            assertEquals(List.of("D|NORMAL", "F|NORMAL", "E|NORMAL"), tokens(controller.Gridpane1));
+            Pane annotations = (Pane) root.lookup("#annotationOverlay");
+            assertEquals(1, annotations.getChildren().stream().filter(Path.class::isInstance).count());
         });
     }
 
