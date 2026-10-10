@@ -168,6 +168,8 @@ public class Controller {
     private static final String EMPTY_BLOCK_OWNER = "emptyBlockOwner";
     private static final String EMPTY_BLOCK_GUIDE = "LEERER NOTENBLOCK – WIRD NICHT GEDRUCKT";
     private static final double EMPTY_BLOCK_GUIDE_WIDTH = 41 * (NOTE_SLOT_WIDTH + NOTE_GAP) - NOTE_GAP;
+    private static final int DEFAULT_CIRCLE_FONT_SIZE = 18;
+    private static final int DEFAULT_MARCH_FONT_SIZE = 22;
     private static final Map<KeyCode, String> NOTE_KEYS = Map.ofEntries(
             Map.entry(KeyCode.C, "C1"), Map.entry(KeyCode.D, "D"),
             Map.entry(KeyCode.E, "E"), Map.entry(KeyCode.F, "F"),
@@ -196,6 +198,7 @@ public class Controller {
     private final List<PauseMarker> pauseMarkers = new ArrayList<>();
     private final List<PageTextAnnotation> textAnnotations = new ArrayList<>();
     private final List<SlurAnnotation> slurAnnotations = new ArrayList<>();
+    private final Map<TextField, Integer> pageHeadingSizes = new IdentityHashMap<>();
     private boolean documentDirty;
     private static final int HISTORY_LIMIT = 100;
     private final Deque<DocumentSnapshot> undoHistory = new ArrayDeque<>();
@@ -205,7 +208,9 @@ public class Controller {
     private boolean draggingTextHistoryRecorded;
 
     private record DocumentSnapshot(String leftCircle, String leftMarch, String rightCircle,
-                                    String rightMarch, String body, boolean rightPage, boolean dirty) {
+                                    String rightMarch, int leftCircleSize, int leftMarchSize,
+                                    int rightCircleSize, int rightMarchSize,
+                                    String body, boolean rightPage, boolean dirty) {
     }
 
     private static final class PauseMarker {
@@ -270,7 +275,7 @@ public class Controller {
     private StackPane selectedNoteContainer;
     private GridPane selectedNoteGrid;
     private final List<StackPane> selectedNoteContainers = new ArrayList<>();
-    private Text selectedTextAnnotation;
+    private final Set<Text> selectedTextAnnotations = new LinkedHashSet<>();
     private Path selectedSlurPath;
     private final List<PauseMarker> selectedPauseMarkers = new ArrayList<>();
     private Rectangle selectionRectangle;
@@ -300,7 +305,9 @@ public class Controller {
             throw new UncheckedIOException(exception);
         }
         return new DocumentSnapshot(leftCircleText.getText(), leftMarchText.getText(),
-                rightCircleText.getText(), rightMarchText.getText(), buffer.toString(),
+                rightCircleText.getText(), rightMarchText.getText(),
+                pageHeadingSize(leftCircleText), pageHeadingSize(leftMarchText),
+                pageHeadingSize(rightCircleText), pageHeadingSize(rightMarchText), buffer.toString(),
                 activeGridPane == Gridpane2, documentDirty);
     }
 
@@ -326,6 +333,8 @@ public class Controller {
                     field == leftMarchText ? previousValue : current.leftMarch(),
                     field == rightCircleText ? previousValue : current.rightCircle(),
                     field == rightMarchText ? previousValue : current.rightMarch(),
+                    current.leftCircleSize(), current.leftMarchSize(),
+                    current.rightCircleSize(), current.rightMarchSize(),
                     current.body(), current.rightPage(), current.dirty()));
         }
         documentDirty = true;
@@ -340,6 +349,10 @@ public class Controller {
                 && Objects.equals(first.leftMarch(), second.leftMarch())
                 && Objects.equals(first.rightCircle(), second.rightCircle())
                 && Objects.equals(first.rightMarch(), second.rightMarch())
+                && first.leftCircleSize() == second.leftCircleSize()
+                && first.leftMarchSize() == second.leftMarchSize()
+                && first.rightCircleSize() == second.rightCircleSize()
+                && first.rightMarchSize() == second.rightMarchSize()
                 && Objects.equals(first.body(), second.body());
     }
 
@@ -377,6 +390,10 @@ public class Controller {
             leftMarchText.setText(snapshot.leftMarch());
             rightCircleText.setText(snapshot.rightCircle());
             rightMarchText.setText(snapshot.rightMarch());
+            applyPageHeadingSize(leftCircleText, snapshot.leftCircleSize());
+            applyPageHeadingSize(leftMarchText, snapshot.leftMarchSize());
+            applyPageHeadingSize(rightCircleText, snapshot.rightCircleSize());
+            applyPageHeadingSize(rightMarchText, snapshot.rightMarchSize());
             List<PendingSlur> pendingSlurs = new ArrayList<>();
             for (String line : snapshot.body().lines().toList()) {
                 String[] parts = splitSerializedLine(line);
@@ -677,10 +694,96 @@ public class Controller {
             field.textProperty().addListener((observable, oldValue, newValue) -> recordPageTextEdit(field, oldValue));
             field.setOnMousePressed(event -> field.requestFocus());
             field.setOnAction(event -> field.getParent().requestFocus());
+            applyPageHeadingSize(field, defaultPageHeadingSize(field));
+            installPageHeadingContextMenu(field);
         }
 
         // Die leere Overlay-Fläche darf keine Klicks auf darunterliegende Felder abfangen.
         annotationOverlay.setPickOnBounds(false);
+    }
+
+    private int defaultPageHeadingSize(TextField field) {
+        return field == leftCircleText || field == rightCircleText
+                ? DEFAULT_CIRCLE_FONT_SIZE : DEFAULT_MARCH_FONT_SIZE;
+    }
+
+    private int pageHeadingSize(TextField field) {
+        return pageHeadingSizes.getOrDefault(field, defaultPageHeadingSize(field));
+    }
+
+    private void installPageHeadingContextMenu(TextField field) {
+        ContextMenu menu = new ContextMenu();
+        registerContextMenuEscape(menu);
+        Menu sizeMenu = new Menu("Schriftgröße");
+        for (int size : List.of(12, 14, 18, 22, 24, 30, 36, 48)) {
+            MenuItem option = new MenuItem();
+            option.setUserData(size);
+            option.setOnAction(event -> setPageHeadingSize(field, size));
+            sizeMenu.getItems().add(option);
+        }
+        MenuItem customSize = new MenuItem("Andere Größe …");
+        customSize.setOnAction(event -> {
+            TextInputDialog dialog = new TextInputDialog(String.valueOf(pageHeadingSize(field)));
+            dialog.setTitle("Schriftgröße ändern");
+            dialog.setHeaderText("Schriftgröße für diesen Seitentitel (8–72 pt)");
+            dialog.setContentText("Größe:");
+            dialog.showAndWait().ifPresent(value -> {
+                try {
+                    setPageHeadingSize(field, Integer.parseInt(value.trim()));
+                } catch (NumberFormatException ignored) {
+                    keyboardStatus.setText("Bitte eine ganze Zahl zwischen 8 und 72 eingeben.");
+                }
+            });
+        });
+        sizeMenu.getItems().add(customSize);
+
+        MenuItem cut = new MenuItem("Ausschneiden");
+        cut.setOnAction(event -> field.cut());
+        MenuItem copy = new MenuItem("Kopieren");
+        copy.setOnAction(event -> field.copy());
+        MenuItem paste = new MenuItem("Einfügen");
+        paste.setOnAction(event -> field.paste());
+        MenuItem selectAll = new MenuItem("Alles auswählen");
+        selectAll.setOnAction(event -> field.selectAll());
+        menu.getItems().addAll(sizeMenu, new SeparatorMenuItem(),
+                cut, copy, paste, selectAll);
+        menu.setOnShowing(event -> {
+            if (activeContextMenu != null && activeContextMenu != menu) activeContextMenu.hide();
+            activeContextMenu = menu;
+            for (MenuItem item : sizeMenu.getItems()) {
+                if (item.getUserData() instanceof Integer size) {
+                    item.setText(size + " pt" + (pageHeadingSize(field) == size ? " ✓" : ""));
+                }
+            }
+            cut.setDisable(field.getSelectedText().isEmpty());
+            copy.setDisable(field.getSelectedText().isEmpty());
+        });
+        menu.setOnHidden(event -> {
+            if (activeContextMenu == menu) activeContextMenu = null;
+        });
+        field.setContextMenu(menu);
+    }
+
+    private void setPageHeadingSize(TextField field, int fontSize) {
+        if (fontSize < 8 || fontSize > 72) {
+            keyboardStatus.setText("Bitte eine Schriftgröße zwischen 8 und 72 pt eingeben.");
+            return;
+        }
+        if (pageHeadingSize(field) == fontSize) return;
+        markDocumentDirty();
+        applyPageHeadingSize(field, fontSize);
+    }
+
+    private void applyPageHeadingSize(TextField field, int fontSize) {
+        pageHeadingSizes.put(field, fontSize);
+        field.setStyle(field.getStyle().replaceFirst("-fx-font-size\\s*:\\s*\\d+px",
+                "-fx-font-size: " + fontSize + "px"));
+        double originalHeight = field == leftCircleText || field == rightCircleText ? 52 : 36;
+        double originalY = field == leftCircleText || field == rightCircleText ? 38 : 43;
+        double height = Math.max(originalHeight, fontSize * 1.5 + 8);
+        field.setPrefHeight(height);
+        field.setMaxHeight(height);
+        field.setLayoutY(originalY - (height - originalHeight) / 2);
     }
 
     private Map<TextField, String> hidePromptTextsForPrinting() {
@@ -775,6 +878,33 @@ public class Controller {
             draggingTextHistoryRecorded = false;
             event.consume();
         });
+        text.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
+                editTextAnnotation(text);
+                event.consume();
+            }
+        });
+    }
+
+    private void editTextAnnotation(Text text) {
+        TextInputDialog dialog = new TextInputDialog(text.getText());
+        dialog.setTitle("Freitext bearbeiten");
+        dialog.setHeaderText("Text auf der Notenseite ändern");
+        dialog.setContentText("Text:");
+        dialog.showAndWait().ifPresent(value -> setTextAnnotationText(text, value));
+    }
+
+    private void setTextAnnotationText(Text text, String value) {
+        if (value == null || value.isBlank()) {
+            keyboardStatus.setText("Der Freitext darf nicht leer sein.");
+            return;
+        }
+        if (text.getText().equals(value)) return;
+        markDocumentDirty();
+        text.setText(value);
+        text.setUserData("TEXT|" + encodeText(value));
+        text.setLayoutX(Math.max(4, Math.min(text.getLayoutX(),
+                PAGE_WIDTH - text.getLayoutBounds().getWidth() - 4)));
     }
 
     private void installTextContextMenu(Text text) {
@@ -843,15 +973,25 @@ public class Controller {
             }
             return false;
         });
-        if (selectedTextAnnotation == text) {
-            selectedTextAnnotation = null;
-        }
+        selectedTextAnnotations.remove(text);
+    }
+
+    private void removeSelectedTextAnnotations() {
+        if (selectedTextAnnotations.isEmpty()) return;
+        markDocumentDirty();
+        textAnnotations.removeIf(annotation -> selectedTextAnnotations.contains(annotation.text));
+        annotationOverlay.getChildren().removeAll(selectedTextAnnotations);
+        selectedTextAnnotations.clear();
     }
 
     private void selectTextAnnotation(Text text) {
         clearNoteSelection();
         clearNonNoteSelection();
-        selectedTextAnnotation = text;
+        addTextAnnotationToSelection(text);
+    }
+
+    private void addTextAnnotationToSelection(Text text) {
+        selectedTextAnnotations.add(text);
         text.setFill(Color.web("#1976D2"));
     }
 
@@ -870,16 +1010,14 @@ public class Controller {
     }
 
     private void clearNonNoteSelection() {
-        if (selectedTextAnnotation != null) {
-            selectedTextAnnotation.setFill(Color.BLACK);
-        }
+        for (Text text : selectedTextAnnotations) text.setFill(Color.BLACK);
         if (selectedSlurPath != null) {
             selectedSlurPath.setStroke(Color.BLACK);
         }
         for (PauseMarker marker : selectedPauseMarkers) {
             marker.line.setStroke(Color.BLACK);
         }
-        selectedTextAnnotation = null;
+        selectedTextAnnotations.clear();
         selectedSlurPath = null;
         selectedPauseMarkers.clear();
     }
@@ -1095,7 +1233,7 @@ public class Controller {
             if (event.getButton() == MouseButton.PRIMARY
                     && !isElementSelectionTarget(event.getTarget())
                     && !isPageTextFieldTarget(event.getTarget())) {
-                selectionStart = new Point2D(event.getX(), event.getY());
+                selectionStart = pageCanvas.sceneToLocal(event.getSceneX(), event.getSceneY());
                 draggingSelection = false;
             }
         });
@@ -1105,21 +1243,23 @@ public class Controller {
                 return;
             }
 
-            double width = Math.abs(event.getX() - selectionStart.getX());
-            double height = Math.abs(event.getY() - selectionStart.getY());
+            Point2D point = pageCanvas.sceneToLocal(event.getSceneX(), event.getSceneY());
+            double width = Math.abs(point.getX() - selectionStart.getX());
+            double height = Math.abs(point.getY() - selectionStart.getY());
             if (!draggingSelection && (width > 6 || height > 6)) {
                 draggingSelection = true;
                 clearNoteSelection();
             }
             if (draggingSelection) {
-                updateSelectionRectangle(event.getX(), event.getY());
+                updateSelectionRectangle(point.getX(), point.getY());
                 event.consume();
             }
         });
 
         pageCanvas.addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
             if (event.getButton() == MouseButton.PRIMARY && draggingSelection) {
-                selectNotesInRectangle(currentSelectionBounds(event.getX(), event.getY()));
+                Point2D point = pageCanvas.sceneToLocal(event.getSceneX(), event.getSceneY());
+                selectNotesInRectangle(currentSelectionBounds(point.getX(), point.getY()));
                 selectionRectangle.setVisible(false);
                 event.consume();
             }
@@ -1174,7 +1314,7 @@ public class Controller {
         }
         if (isTextInputTarget(event.getTarget())) return;
         if (code == KeyCode.ESCAPE && (!selectedNoteContainers.isEmpty()
-                || !selectedPauseMarkers.isEmpty() || selectedTextAnnotation != null
+                || !selectedPauseMarkers.isEmpty() || !selectedTextAnnotations.isEmpty()
                 || selectedSlurPath != null || activeContextMenu != null)) {
             if (activeContextMenu != null) activeContextMenu.hide();
             clearAllSelection();
@@ -1190,13 +1330,14 @@ public class Controller {
             return;
         }
         event.consume();
-        // Ein gehaltener Ton erzeugt durch die Tastenwiederholung keine Notenserie.
-        if (!pressedKeys.add(code)) {
+        // Noten und Leerblöcke bleiben einmalig; gehaltenes Löschen nutzt die
+        // Tastenwiederholung des Betriebssystems.
+        if (!pressedKeys.add(code) && !delete) {
             return;
         }
         if (delete) {
-            if (selectedTextAnnotation != null) {
-                removeTextAnnotation(selectedTextAnnotation);
+            if (!selectedTextAnnotations.isEmpty()) {
+                removeSelectedTextAnnotations();
             } else if (!selectedNoteContainers.isEmpty() || !selectedPauseMarkers.isEmpty()) {
                 deleteSelectedNotesAndCompact();
             } else {
@@ -1347,6 +1488,13 @@ public class Controller {
             }
         }
         setSelectedNotes(notes);
+        for (PageTextAnnotation annotation : textAnnotations) {
+            Bounds textBounds = pageCanvas.sceneToLocal(
+                    annotation.text.localToScene(annotation.text.getBoundsInLocal()));
+            if (selectionBounds.intersects(textBounds)) {
+                addTextAnnotationToSelection(annotation.text);
+            }
+        }
         for (PauseMarker marker : pauseMarkers) {
             Bounds pauseBounds = pageCanvas.sceneToLocal(
                     marker.line.localToScene(marker.line.getBoundsInLocal()));
@@ -3032,14 +3180,7 @@ public class Controller {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
             // Seitentexte werden ebenfalls gespeichert. Base64 verhindert,
             // dass Sonderzeichen oder Semikolons das Dateiformat stören.
-            writer.write("Kreis1;" + encodeText(leftCircleText.getText()));
-            writer.newLine();
-            writer.write("Marsch1;" + encodeText(leftMarchText.getText()));
-            writer.newLine();
-            writer.write("Kreis2;" + encodeText(rightCircleText.getText()));
-            writer.newLine();
-            writer.write("Marsch2;" + encodeText(rightMarchText.getText()));
-            writer.newLine();
+            writePageHeadings(writer);
 
             writeGridTokens(writer, "Seite1", Gridpane1);
             writeGridTokens(writer, "Seite2", Gridpane2);
@@ -3101,6 +3242,25 @@ public class Controller {
     private record PendingSlur(String page, String token) {
     }
 
+    private void writePageHeadings(BufferedWriter writer) throws IOException {
+        writer.write("Kreis1;" + encodeText(leftCircleText.getText()));
+        writer.newLine();
+        writer.write("Marsch1;" + encodeText(leftMarchText.getText()));
+        writer.newLine();
+        writer.write("Kreis2;" + encodeText(rightCircleText.getText()));
+        writer.newLine();
+        writer.write("Marsch2;" + encodeText(rightMarchText.getText()));
+        writer.newLine();
+        writer.write("Kreis1Groesse;" + pageHeadingSize(leftCircleText));
+        writer.newLine();
+        writer.write("Marsch1Groesse;" + pageHeadingSize(leftMarchText));
+        writer.newLine();
+        writer.write("Kreis2Groesse;" + pageHeadingSize(rightCircleText));
+        writer.newLine();
+        writer.write("Marsch2Groesse;" + pageHeadingSize(rightMarchText));
+        writer.newLine();
+    }
+
     private void writeAnnotations(BufferedWriter writer, String page, GridPane grid) throws IOException {
         for (PauseMarker marker : pauseMarkers) {
             if (marker.grid == grid && marker.free) {
@@ -3158,6 +3318,22 @@ public class Controller {
     }
 
     private boolean restorePageText(String key, String encodedText) {
+        TextField sizeField = switch (key) {
+            case "Kreis1Groesse" -> leftCircleText;
+            case "Marsch1Groesse" -> leftMarchText;
+            case "Kreis2Groesse" -> rightCircleText;
+            case "Marsch2Groesse" -> rightMarchText;
+            default -> null;
+        };
+        if (sizeField != null) {
+            try {
+                int size = Integer.parseInt(encodedText);
+                if (size >= 8 && size <= 72) applyPageHeadingSize(sizeField, size);
+            } catch (NumberFormatException ignored) {
+                // Ungültige Größenangaben behalten die bisherige Größe bei.
+            }
+            return true;
+        }
         String text = decodeText(encodedText);
         switch (key) {
             case "Kreis1" -> leftCircleText.setText(text);
@@ -3176,6 +3352,9 @@ public class Controller {
         rightCircleText.clear();
         leftMarchText.clear();
         rightMarchText.clear();
+        for (TextField field : List.of(leftCircleText, rightCircleText, leftMarchText, rightMarchText)) {
+            applyPageHeadingSize(field, defaultPageHeadingSize(field));
+        }
     }
 
     private boolean restoreSpecialToken(String token) {

@@ -157,29 +157,27 @@
                         <Button fx:id="Gis_As1" text="Gis_As1"/>
                         <Button fx:id="A1" text="A1"/>
                     </FlowPane>
-                    <Button fx:id="emptyBlockButton" text="Leerer Notenblock (Enter)"
+                    <Button fx:id="emptyBlockButton" text="Leerer Notenblock"
                             onAction="#handleEmptyBlockAction" />
                     <Label text="Schließt den aktuellen Block ab und lässt eine ganze Zeile frei – auch als letzte Zeile der Seite."
                            wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                     <Separator />
-                    <Label text="Wiederholungszeichen, Pausenstrich"
-                           style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #37474F;" />
                     <HBox spacing="8.0">
-                        <Button fx:id="Wiederholungszeichen" text="Wiederholungszeichen"
+                        <Button fx:id="Wiederholungszeichen" text="Wiederholungen"
                                 onAction="#handleWiederholungszeichenAction" />
                         <Button fx:id="pauseStrokeButton" text="Pausenstrich"
                                 onAction="#handlePauseStrokeAction" />
                     </HBox>
+                    <Separator />
                     <Label text="Freien Text eingeben und anschließend auf der Seite verschieben. Rechtsklick ändert die Schriftgröße oder löscht ihn."
                            wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                     <TextField fx:id="freeTextInput" promptText="Freien Text eingeben" />
-                    <Button fx:id="addFreeTextButton" text="Text auf Seite einfügen"
+                    <Button fx:id="addFreeTextButton" text="Freitext"
                             onAction="#handleAddFreeTextAction" />
+                    <Separator />
                     <VBox spacing="7.0" style="-fx-padding: 10; -fx-background-color: #E6F4EE; -fx-background-radius: 8; -fx-text-base-color: #000000; -fx-text-background-color: #000000; -fx-text-inner-color: #000000;">
-                        <Label text="Flöte per Mikrofon eingeben" style="-fx-font-weight: bold; -fx-text-fill: #000000;" />
-                        <Label text="Mikrofon" labelFor="$microphoneDevice" style="-fx-text-fill: #000000;" />
+                        <Label text="Notenmikrofon" style="-fx-font-weight: bold; -fx-text-fill: #000000;" />
                         <ComboBox fx:id="microphoneDevice" maxWidth="Infinity" style="-fx-text-base-color: #000000; -fx-text-background-color: #000000;" />
-                        <Label text="Instrument" labelFor="$microphoneInstrument" style="-fx-text-fill: #000000;" />
                         <ComboBox fx:id="microphoneInstrument" maxWidth="Infinity" style="-fx-text-base-color: #000000; -fx-text-background-color: #000000;" />
                         <HBox spacing="8.0" alignment="CENTER_LEFT">
                             <Label text="Kammerton A (Hz)" labelFor="$concertPitch" style="-fx-text-fill: #000000;" />

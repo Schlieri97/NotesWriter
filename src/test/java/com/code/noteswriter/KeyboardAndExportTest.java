@@ -3,11 +3,13 @@ package com.code.noteswriter;
 import javafx.application.Platform;
 import javafx.event.Event;
 import javafx.fxml.FXMLLoader;
+import javafx.geometry.Bounds;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.image.WritableImage;
@@ -186,6 +188,23 @@ class KeyboardAndExportTest {
     }
 
     @Test
+    void holdingDeleteKeysRemovesSeveralNotes() throws Exception {
+        onFx(() -> {
+            for (int i = 0; i < 5; i++) tap(KeyCode.D);
+            key(root, KeyEvent.KEY_PRESSED, KeyCode.BACK_SPACE, false, false, false);
+            key(root, KeyEvent.KEY_PRESSED, KeyCode.BACK_SPACE, false, false, false);
+            key(root, KeyEvent.KEY_PRESSED, KeyCode.BACK_SPACE, false, false, false);
+            key(root, KeyEvent.KEY_RELEASED, KeyCode.BACK_SPACE, false, false, false);
+            assertEquals(2, tokens(controller.Gridpane1).size());
+
+            key(root, KeyEvent.KEY_PRESSED, KeyCode.DELETE, false, false, false);
+            key(root, KeyEvent.KEY_PRESSED, KeyCode.DELETE, false, false, false);
+            key(root, KeyEvent.KEY_RELEASED, KeyCode.DELETE, false, false, false);
+            assertTrue(tokens(controller.Gridpane1).isEmpty());
+        });
+    }
+
+    @Test
     void deleteAndBackspaceRemoveSelectedPauseAndRepeat() throws Exception {
         onFx(() -> {
             Pane pauseOverlay = (Pane) root.lookup("#pauseOverlay");
@@ -222,6 +241,87 @@ class KeyboardAndExportTest {
                 assertFalse(overlay.getChildren().contains(text));
                 assertEquals(List.of("D|NORMAL"), tokens(controller.Gridpane1));
             }
+        });
+    }
+
+    @Test
+    void selectionRectangleAlsoSelectsFreeText() throws Exception {
+        onFx(() -> {
+            TextField input = (TextField) root.lookup("#freeTextInput");
+            Pane overlay = (Pane) root.lookup("#annotationOverlay");
+            Pane page = (Pane) root.lookup("#pageCanvas");
+            for (String value : List.of("Erster Text", "Zweiter Text")) {
+                input.setText(value);
+                controller.addFreeTextButton.fire();
+            }
+            List<Text> texts = overlay.getChildren().stream().filter(Text.class::isInstance)
+                    .map(Text.class::cast).toList();
+            texts.get(0).setLayoutX(100);
+            texts.get(0).setLayoutY(150);
+            texts.get(1).setLayoutX(220);
+            texts.get(1).setLayoutY(150);
+            root.layout();
+            Bounds first = page.sceneToLocal(texts.get(0).localToScene(texts.get(0).getBoundsInLocal()));
+            Bounds second = page.sceneToLocal(texts.get(1).localToScene(texts.get(1).getBoundsInLocal()));
+            double minX = Math.min(first.getMinX(), second.getMinX()) - 5;
+            double minY = Math.min(first.getMinY(), second.getMinY()) - 5;
+            double maxX = Math.max(first.getMaxX(), second.getMaxX()) + 5;
+            double maxY = Math.max(first.getMaxY(), second.getMaxY()) + 5;
+            var sceneStart = page.localToScene(minX, minY);
+            var sceneEnd = page.localToScene(maxX, maxY);
+            Event.fireEvent(page, new MouseEvent(MouseEvent.MOUSE_PRESSED,
+                    sceneStart.getX(), sceneStart.getY(), sceneStart.getX(), sceneStart.getY(),
+                    MouseButton.PRIMARY, 1, false, false, false, false,
+                    true, false, false, false, false, true,
+                    new PickResult(page, minX, minY)));
+            var startField = Controller.class.getDeclaredField("selectionStart");
+            startField.setAccessible(true);
+            assertNotNull(startField.get(controller));
+            Event.fireEvent(page, new MouseEvent(MouseEvent.MOUSE_DRAGGED,
+                    sceneEnd.getX(), sceneEnd.getY(), sceneEnd.getX(), sceneEnd.getY(),
+                    MouseButton.PRIMARY, 1, false, false, false, false,
+                    true, false, false, false, false, true,
+                    new PickResult(page, maxX, maxY)));
+            var rectangleField = Controller.class.getDeclaredField("selectionRectangle");
+            rectangleField.setAccessible(true);
+            assertTrue(((javafx.scene.shape.Rectangle) rectangleField.get(controller)).isVisible());
+            Event.fireEvent(page, new MouseEvent(MouseEvent.MOUSE_RELEASED,
+                    sceneEnd.getX(), sceneEnd.getY(), sceneEnd.getX(), sceneEnd.getY(),
+                    MouseButton.PRIMARY, 1, false, false, false, false,
+                    false, false, false, false, false, true,
+                    new PickResult(page, maxX, maxY)));
+            assertEquals(Color.web("#1976D2"), texts.get(0).getFill());
+            assertEquals(Color.web("#1976D2"), texts.get(1).getFill());
+            tap(KeyCode.DELETE);
+            assertTrue(overlay.getChildren().stream().noneMatch(Text.class::isInstance));
+            tap(KeyCode.Z, false, true, false);
+            assertEquals(2, overlay.getChildren().stream().filter(Text.class::isInstance).count());
+        });
+    }
+
+    @Test
+    void editedFreeTextKeepsSizeAndCanBeUndone() throws Exception {
+        onFx(() -> {
+            ((TextField) root.lookup("#freeTextInput")).setText("Alt");
+            controller.addFreeTextButton.fire();
+            Pane overlay = (Pane) root.lookup("#annotationOverlay");
+            Text text = (Text) overlay.getChildren().stream()
+                    .filter(Text.class::isInstance).findFirst().orElseThrow();
+            assertNotNull(text.getOnMouseClicked());
+            call("setTextAnnotationSize", text, 30);
+            call("setTextAnnotationText", text, "Neu");
+            assertEquals("Neu", text.getText());
+            assertEquals(30, text.getFont().getSize());
+            StringWriter data = new StringWriter();
+            BufferedWriter writer = new BufferedWriter(data);
+            call("writeAnnotations", writer, "Seite1", controller.Gridpane1);
+            writer.flush();
+            assertTrue(data.toString().contains("TEXT|TmV1|"));
+            tap(KeyCode.Z, false, true, false);
+            Text restored = (Text) overlay.getChildren().stream()
+                    .filter(Text.class::isInstance).findFirst().orElseThrow();
+            assertEquals("Alt", restored.getText());
+            assertEquals(30, restored.getFont().getSize());
         });
     }
 
@@ -742,6 +842,52 @@ class KeyboardAndExportTest {
             assertEquals("", heading.getText());
             ((javafx.scene.control.Button) root.lookup("#redoButton")).fire();
             assertEquals("Marsch A", heading.getText());
+        });
+    }
+
+    @Test
+    void pageHeadingFontSizesCanBeChangedUndoneAndSaved() throws Exception {
+        onFx(() -> {
+            String[] ids = {"leftCircleText", "leftMarchText", "rightCircleText", "rightMarchText"};
+            int[] defaults = {18, 22, 18, 22};
+            for (int i = 0; i < ids.length; i++) {
+                TextField field = (TextField) root.lookup("#" + ids[i]);
+                assertNotNull(field.getContextMenu());
+                Menu sizeMenu = (Menu) field.getContextMenu().getItems().getFirst();
+                assertEquals("Schriftgröße", sizeMenu.getText());
+                sizeMenu.getItems().stream()
+                        .filter(item -> Integer.valueOf(30).equals(item.getUserData()))
+                        .findFirst().orElseThrow().fire();
+                assertTrue(field.getStyle().contains("-fx-font-size: 30px"));
+                assertTrue(field.getPrefHeight() >= 53);
+                call("handleUndoAction", (Object) null);
+                assertTrue(field.getStyle().contains("-fx-font-size: " + defaults[i] + "px"));
+                call("handleRedoAction", (Object) null);
+                assertTrue(field.getStyle().contains("-fx-font-size: 30px"));
+            }
+
+            StringWriter output = new StringWriter();
+            BufferedWriter writer = new BufferedWriter(output);
+            call("writePageHeadings", writer);
+            writer.flush();
+            assertTrue(output.toString().contains("Kreis1Groesse;30"));
+            assertTrue(output.toString().contains("Marsch1Groesse;30"));
+            assertTrue(output.toString().contains("Kreis2Groesse;30"));
+            assertTrue(output.toString().contains("Marsch2Groesse;30"));
+
+            call("clearPageTexts");
+            assertTrue(((TextField) root.lookup("#leftMarchText")).getStyle().contains("22px"));
+            for (String line : output.toString().lines().toList()) {
+                int separator = line.indexOf(';');
+                assertTrue((Boolean) call("restorePageText", line.substring(0, separator), line.substring(separator + 1)));
+            }
+            for (String id : ids) {
+                assertTrue(((TextField) root.lookup("#" + id)).getStyle().contains("30px"));
+            }
+            call("clearPageTexts");
+            call("restorePageText", "Marsch1", "TWFyc2NoIEE=");
+            assertEquals("Marsch A", ((TextField) root.lookup("#leftMarchText")).getText());
+            assertTrue(((TextField) root.lookup("#leftMarchText")).getStyle().contains("22px"));
         });
     }
 
