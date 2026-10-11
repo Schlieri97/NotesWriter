@@ -146,6 +146,8 @@ public class Controller {
     @FXML
     private Pane annotationOverlay;
     @FXML
+    private Rectangle activePageIndicator;
+    @FXML
     private Label slurSelectionLabel;
     @FXML
     private Button clearNoteSelectionButton;
@@ -162,6 +164,8 @@ public class Controller {
     // Bild und Noten werden nicht mehr gestreckt, sondern gemeinsam skaliert.
     private static final double PAGE_WIDTH = 1290.0;
     private static final double PAGE_HEIGHT = 910.0;
+    private static final double ACTIVE_PAGE_INDICATOR_INSET = 10.0;
+    private static final double ACTIVE_PAGE_INDICATOR_GAP = 10.0;
     private static final double NOTE_SLOT_WIDTH = 8.4;
     private static final double NOTE_GAP = 5.5;
     private static final String EMPTY_BLOCK = "LEERBLOCK";
@@ -591,6 +595,8 @@ public class Controller {
                   Erst beim Loslassen der linken Maustaste wird die Auswahl übernommen.
                 • Ein Linksklick außerhalb der markierten Noten hebt die Auswahl auf und schließt das
                   Auswahlmenü. Ein Klick auf eine andere Note wählt diese Note aus.
+                • Eine einzelne markierte Note oder ein Wiederholungszeichen kann mit gedrückter
+                  linker Maustaste an eine andere Position auf derselben oder der anderen Seite verschoben werden.
                 • Mit einem Rechtsklick auf ein markiertes Element öffnet sich das Auswahlmenü.
                   Dort stehen „Auswahl aufheben“ und „Ausgewählte Elemente löschen“ zur Verfügung.
 
@@ -1171,7 +1177,9 @@ public class Controller {
         pageCanvas.setOnDragOver(event -> {
             Dragboard dragboard = event.getDragboard();
             if (isSupportedDrag(dragboard)) {
-                event.acceptTransferModes(TransferMode.COPY);
+                TransferMode mode = dragboard.getString().startsWith("MOVE|")
+                        ? TransferMode.MOVE : TransferMode.COPY;
+                event.acceptTransferModes(mode);
             }
             event.consume();
         });
@@ -1554,7 +1562,9 @@ public class Controller {
 
     private boolean isSupportedDrag(Dragboard dragboard) {
         return dragboard.hasString() &&
-                (dragboard.getString().startsWith("NOTE|") || dragboard.getString().startsWith("SPECIAL|"));
+                (dragboard.getString().startsWith("NOTE|")
+                        || dragboard.getString().startsWith("SPECIAL|")
+                        || dragboard.getString().startsWith("MOVE|"));
     }
 
     private boolean dropElement(DragEvent event) {
@@ -1566,7 +1576,19 @@ public class Controller {
         double pageX = pageCanvas.sceneToLocal(event.getSceneX(), event.getSceneY()).getX();
         selectPage(pageX < PAGE_WIDTH / 2.0 ? Gridpane1 : Gridpane2);
 
-        String[] payload = event.getDragboard().getString().split("\\|", 3);
+        String[] payload = event.getDragboard().getString().split("\\|", 4);
+        if (payload[0].equals("MOVE") && payload.length >= 4) {
+            try {
+                GridPane sourceGrid = "Seite1".equals(payload[1]) ? Gridpane1
+                        : "Seite2".equals(payload[1]) ? Gridpane2 : null;
+                int sourceColumn = Integer.parseInt(payload[2]);
+                int sourceRow = Integer.parseInt(payload[3]);
+                return moveNoteTo(sourceGrid, sourceColumn, sourceRow,
+                        event.getSceneX(), event.getSceneY());
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
+        }
         if (payload[0].equals("NOTE") && payload.length >= 2) {
             return insertDroppedNote(activeGridPane, payload[1],
                     event.getSceneX(), event.getSceneY());
@@ -1583,6 +1605,239 @@ public class Controller {
             return true;
         }
         return false;
+    }
+
+    private boolean moveNoteTo(GridPane sourceGrid, int sourceColumn, int sourceRow,
+                                double sceneX, double sceneY) {
+        if (sourceGrid == null || sourceColumn < 0 || sourceRow < 0) {
+            return false;
+        }
+
+        Point2D pagePoint = pageCanvas.sceneToLocal(sceneX, sceneY);
+        if (pagePoint.getX() < 0 || pagePoint.getX() > PAGE_WIDTH
+                || pagePoint.getY() < 0 || pagePoint.getY() > PAGE_HEIGHT) {
+            return false;
+        }
+
+        GridPane targetGrid = pagePoint.getX() < PAGE_WIDTH / 2.0 ? Gridpane1 : Gridpane2;
+        List<SerializedGridToken> sourceTokens = collectGridTokens(sourceGrid);
+        SerializedGridToken movedToken = sourceTokens.stream()
+                .filter(token -> !token.pause() && isMovableToken(token.token())
+                        && token.column() == sourceColumn && token.row() == sourceRow)
+                .findFirst()
+                .orElse(null);
+        if (movedToken == null) {
+            return false;
+        }
+
+        List<SerializedGridToken> sourceReplacement = sourceTokens.stream()
+                .filter(token -> token != movedToken)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        List<SerializedGridToken> targetBase = sourceGrid == targetGrid
+                ? sourceReplacement : collectGridTokens(targetGrid);
+        int insertionIndex = insertionIndexAt(targetGrid, targetBase, sceneX, sceneY);
+        int elementInsertionIndex = (int) targetBase.subList(0, insertionIndex).stream()
+                .filter(token -> isMovableToken(token.token()))
+                .count();
+        int noteInsertionIndex = (int) targetBase.subList(0, insertionIndex).stream()
+                .filter(token -> isNoteToken(token.token()))
+                .count();
+        List<SerializedGridToken> targetReplacement = new ArrayList<>(targetBase);
+        targetReplacement.add(insertionIndex,
+                new SerializedGridToken(movedToken.token(), -1, -1, false));
+
+        if (!canFitGridTokens(targetReplacement)) {
+            keyboardStatus.setText(isNoteToken(movedToken.token())
+                    ? "Für diese Note ist auf der Zielseite kein Platz mehr."
+                    : "Für das Wiederholungszeichen ist auf der Zielseite kein Platz mehr.");
+            return false;
+        }
+        if (sourceGrid == targetGrid && sameTokenSequence(sourceTokens, targetReplacement)) {
+            return false;
+        }
+
+        int movedElementIndex = elementIndexForSlot(sourceTokens, sourceColumn, sourceRow);
+        if (movedElementIndex < 0) {
+            return false;
+        }
+        boolean movingNote = isNoteToken(movedToken.token());
+        int movedNoteIndex = movingNote
+                ? noteIndexForSlot(sourceTokens, sourceColumn, sourceRow) : -1;
+        List<SlurMovePlan> sourceSlurs = captureSlurMovePlans(sourceGrid, sourceTokens);
+        List<SlurMovePlan> targetSlurs = sourceGrid == targetGrid
+                ? List.of() : captureSlurMovePlans(targetGrid, targetBase);
+
+        List<Integer> sourceElementIdentities = elementIdentityOrder(sourceTokens);
+        sourceElementIdentities.remove(movedElementIndex);
+        List<Integer> targetElementIdentities;
+        List<Integer> sourceNoteIdentities = noteIdentityOrder(sourceTokens.size(), sourceTokens);
+        List<Integer> targetNoteIdentities;
+        if (movingNote) {
+            sourceNoteIdentities.remove(movedNoteIndex);
+        }
+        if (sourceGrid == targetGrid) {
+            sourceElementIdentities.add(elementInsertionIndex, MOVED_ELEMENT_ID);
+            targetElementIdentities = sourceElementIdentities;
+            if (movingNote) {
+                sourceSlurs = sourceSlurs.stream()
+                        .map(plan -> plan.withMovedNote(movedNoteIndex))
+                        .toList();
+                sourceNoteIdentities.add(noteInsertionIndex, MOVED_ELEMENT_ID);
+            }
+            targetNoteIdentities = sourceNoteIdentities;
+        } else {
+            targetElementIdentities = elementIdentityOrder(targetBase);
+            targetElementIdentities.add(elementInsertionIndex, MOVED_ELEMENT_ID);
+            if (movingNote) {
+                sourceSlurs = sourceSlurs.stream()
+                        .map(plan -> plan.withoutMovedNote(movedNoteIndex))
+                        .filter(plan -> plan.oldNoteIndices().size() >= 2)
+                        .toList();
+                targetNoteIdentities = noteIdentityOrder(targetBase.size(), targetBase);
+                targetNoteIdentities.add(noteInsertionIndex, MOVED_ELEMENT_ID);
+            } else {
+                targetNoteIdentities = noteIdentityOrder(targetBase.size(), targetBase);
+            }
+        }
+
+        selectPage(targetGrid);
+        markDocumentDirty();
+        clearNoteSelection();
+        if (sourceGrid == targetGrid) {
+            rebuildGridCompact(sourceGrid, targetReplacement);
+        } else {
+            rebuildGridCompact(sourceGrid, sourceReplacement);
+            rebuildGridCompact(targetGrid, targetReplacement);
+        }
+
+        if (sourceGrid == targetGrid) {
+            restoreMovedSlurs(sourceGrid, sourceSlurs, targetNoteIdentities);
+        } else {
+            restoreMovedSlurs(sourceGrid, sourceSlurs, sourceNoteIdentities);
+            restoreMovedSlurs(targetGrid, targetSlurs, targetNoteIdentities);
+        }
+        selectMovedElement(targetGrid, targetElementIdentities);
+        return true;
+    }
+
+    private boolean sameTokenSequence(List<SerializedGridToken> first,
+                                      List<SerializedGridToken> second) {
+        if (first.size() != second.size()) {
+            return false;
+        }
+        for (int i = 0; i < first.size(); i++) {
+            SerializedGridToken left = first.get(i);
+            SerializedGridToken right = second.get(i);
+            if (left.pause() != right.pause() || !Objects.equals(left.token(), right.token())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private int noteIndexForSlot(List<SerializedGridToken> tokens, int column, int row) {
+        List<SerializedGridToken> notes = tokens.stream()
+                .filter(token -> !token.pause() && isNoteToken(token.token()))
+                .toList();
+        for (int i = 0; i < notes.size(); i++) {
+            SerializedGridToken note = notes.get(i);
+            if (note.column() == column && note.row() == row) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int elementIndexForSlot(List<SerializedGridToken> tokens, int column, int row) {
+        List<SerializedGridToken> elements = tokens.stream()
+                .filter(token -> !token.pause() && isMovableToken(token.token()))
+                .toList();
+        for (int i = 0; i < elements.size(); i++) {
+            SerializedGridToken element = elements.get(i);
+            if (element.column() == column && element.row() == row) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private List<Integer> noteIdentityOrder(int tokenCount, List<SerializedGridToken> tokens) {
+        List<Integer> identities = new ArrayList<>();
+        for (int i = 0; i < tokenCount; i++) {
+            if (!tokens.get(i).pause() && isNoteToken(tokens.get(i).token())) {
+                identities.add(identities.size());
+            }
+        }
+        return identities;
+    }
+
+    private List<Integer> elementIdentityOrder(List<SerializedGridToken> tokens) {
+        List<Integer> identities = new ArrayList<>();
+        for (SerializedGridToken token : tokens) {
+            if (!token.pause() && isMovableToken(token.token())) {
+                identities.add(identities.size());
+            }
+        }
+        return identities;
+    }
+
+    private List<SlurMovePlan> captureSlurMovePlans(GridPane grid,
+                                                     List<SerializedGridToken> tokens) {
+        List<SerializedGridToken> notes = tokens.stream()
+                .filter(token -> !token.pause() && isNoteToken(token.token()))
+                .toList();
+        return slurAnnotations.stream()
+                .filter(annotation -> annotation.grid == grid)
+                .map(annotation -> new SlurMovePlan(annotation.slots.stream()
+                        .map(slot -> noteIndexForSlot(notes, slot.column(), slot.row()))
+                        .filter(index -> index >= 0)
+                        .distinct()
+                        .toList()))
+                .filter(plan -> plan.oldNoteIndices().size() >= 2)
+                .toList();
+    }
+
+    private void restoreMovedSlurs(GridPane grid, List<SlurMovePlan> plans,
+                                   List<Integer> identityOrder) {
+        List<SerializedGridToken> notes = collectGridTokens(grid).stream()
+                .filter(token -> !token.pause() && isNoteToken(token.token()))
+                .toList();
+        for (SlurMovePlan plan : plans) {
+            List<NoteSlot> slots = plan.oldNoteIndices().stream()
+                    .map(identityOrder::indexOf)
+                    .filter(index -> index >= 0 && index < notes.size())
+                    .map(index -> notes.get(index))
+                    .map(token -> new NoteSlot(token.column(), token.row()))
+                    .distinct()
+                    .toList();
+            if (slots.size() < 2) {
+                continue;
+            }
+            Path path = createSlurPath(grid, slots);
+            if (!path.getElements().isEmpty()) {
+                annotationOverlay.getChildren().add(path);
+                slurAnnotations.add(new SlurAnnotation(grid, path, slots));
+            }
+        }
+    }
+
+    private void selectMovedElement(GridPane grid, List<Integer> identityOrder) {
+        int movedIndex = identityOrder.indexOf(MOVED_ELEMENT_ID);
+        if (movedIndex < 0) {
+            return;
+        }
+        List<SerializedGridToken> elements = collectGridTokens(grid).stream()
+                .filter(token -> !token.pause() && isMovableToken(token.token()))
+                .toList();
+        if (movedIndex >= elements.size()) {
+            return;
+        }
+        SerializedGridToken moved = elements.get(movedIndex);
+        Node node = findGridSlotNode(grid, moved.column(), moved.row());
+        if (node instanceof StackPane container) {
+            setSelectedNotes(List.of(container));
+            selectedNoteGrid = grid;
+        }
     }
 
     private boolean insertDroppedNote(GridPane grid, String baseNote, double sceneX, double sceneY) {
@@ -2410,6 +2665,25 @@ public class Controller {
     }
 
     private void installNoteSelectionHandler(Node node, StackPane noteContainer, GridPane grid) {
+        node.setOnDragDetected(event -> {
+            if (selectedNoteContainers.size() != 1
+                    || selectedNoteContainers.get(0) != noteContainer) {
+                return;
+            }
+            Integer column = GridPane.getColumnIndex(noteContainer);
+            Integer row = GridPane.getRowIndex(noteContainer);
+            GridPane sourceGrid = findNoteGrid(noteContainer);
+            if (sourceGrid == null || column == null || row == null) {
+                return;
+            }
+
+            Dragboard dragboard = node.startDragAndDrop(TransferMode.MOVE);
+            ClipboardContent content = new ClipboardContent();
+            String page = sourceGrid == Gridpane1 ? "Seite1" : "Seite2";
+            content.putString("MOVE|" + page + "|" + column + "|" + row);
+            dragboard.setContent(content);
+            event.consume();
+        });
         node.setOnMouseClicked(event -> {
             if (event.getButton() == MouseButton.PRIMARY) {
                 selectNote(noteContainer, grid);
@@ -2496,8 +2770,16 @@ public class Controller {
         return token != null && token.contains("|") && !token.startsWith("WIEDERHOLUNG|");
     }
 
+    private boolean isRepeatToken(String token) {
+        return token != null && token.startsWith("WIEDERHOLUNG|");
+    }
+
+    private boolean isMovableToken(String token) {
+        return isNoteToken(token) || isRepeatToken(token);
+    }
+
     private boolean isSelectableToken(String token) {
-        return isNoteToken(token) || (token != null && token.startsWith("WIEDERHOLUNG|"));
+        return isMovableToken(token);
     }
 
     private List<SerializedGridToken> collectGridTokens(GridPane grid) {
@@ -2896,6 +3178,7 @@ public class Controller {
     }
 
     private void updatePageButtonStyles() {
+        updateActivePageIndicator();
         if (leftPageButton == null || rightPageButton == null || activeGridPane == null) {
             return;
         }
@@ -2907,6 +3190,26 @@ public class Controller {
 
         leftPageButton.setStyle(activeGridPane == Gridpane1 ? selectedStyle : normalStyle);
         rightPageButton.setStyle(activeGridPane == Gridpane2 ? selectedStyle : normalStyle);
+    }
+
+    private void updateActivePageIndicator() {
+        if (activePageIndicator == null) {
+            return;
+        }
+        if (activeGridPane != Gridpane1 && activeGridPane != Gridpane2) {
+            activePageIndicator.setVisible(false);
+            return;
+        }
+
+        double halfWidth = (PAGE_WIDTH - 2 * ACTIVE_PAGE_INDICATOR_INSET
+                - ACTIVE_PAGE_INDICATOR_GAP) / 2.0;
+        activePageIndicator.setX(activeGridPane == Gridpane1
+                ? ACTIVE_PAGE_INDICATOR_INSET
+                : ACTIVE_PAGE_INDICATOR_INSET + halfWidth + ACTIVE_PAGE_INDICATOR_GAP);
+        activePageIndicator.setY(ACTIVE_PAGE_INDICATOR_INSET);
+        activePageIndicator.setWidth(halfWidth);
+        activePageIndicator.setHeight(PAGE_HEIGHT - 2 * ACTIVE_PAGE_INDICATOR_INSET);
+        activePageIndicator.setVisible(true);
     }
 
     private void handleDeleteLastNoteAction(ActionEvent event) {
@@ -3149,13 +3452,20 @@ public class Controller {
 
     private WritableImage snapshotPageForPrint() {
         boolean guidesWereVisible = emptyBlockOverlay.isVisible();
+        boolean indicatorWasVisible = activePageIndicator != null && activePageIndicator.isVisible();
         emptyBlockOverlay.setVisible(false);
+        if (activePageIndicator != null) {
+            activePageIndicator.setVisible(false);
+        }
         try {
             pageCanvas.applyCss();
             pageCanvas.layout();
             return pageCanvas.snapshot(null, null);
         } finally {
             emptyBlockOverlay.setVisible(guidesWereVisible);
+            if (activePageIndicator != null) {
+                activePageIndicator.setVisible(indicatorWasVisible);
+            }
         }
     }
 
@@ -3237,6 +3547,22 @@ public class Controller {
     }
 
     private record SerializedGridToken(String token, int column, int row, boolean pause) {
+    }
+
+    private static final int MOVED_ELEMENT_ID = -1;
+
+    private record SlurMovePlan(List<Integer> oldNoteIndices) {
+        private SlurMovePlan withMovedNote(int movedNoteIndex) {
+            return new SlurMovePlan(oldNoteIndices.stream()
+                    .map(index -> index == movedNoteIndex ? MOVED_ELEMENT_ID : index)
+                    .toList());
+        }
+
+        private SlurMovePlan withoutMovedNote(int movedNoteIndex) {
+            return new SlurMovePlan(oldNoteIndices.stream()
+                    .filter(index -> index != movedNoteIndex)
+                    .toList());
+        }
     }
 
     private record PendingSlur(String page, String token) {

@@ -19,6 +19,7 @@
 <?import javafx.scene.control.Slider?>
 <?import javafx.scene.control.Spinner?>
 <?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.shape.Rectangle?>
 
 <AnchorPane xmlns="http://javafx.com/javafx/16" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.code.noteswriter.Controller"
             style="-fx-background-color: #EEF3F8;">
@@ -67,6 +68,11 @@
                         <Pane fx:id="annotationOverlay" pickOnBounds="false"
                               minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                               minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
+                        <Rectangle fx:id="activePageIndicator"
+                                   x="10.0" y="10.0" width="630.0" height="890.0"
+                                   arcWidth="10.0" arcHeight="10.0"
+                                   fill="TRANSPARENT" stroke="#1976D2" strokeWidth="3.0"
+                                   mouseTransparent="true" managed="false" visible="false" />
                     </Pane>
                 </StackPane>
             </Group>

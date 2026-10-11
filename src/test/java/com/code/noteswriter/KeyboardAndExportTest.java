@@ -23,6 +23,7 @@ import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Path;
+import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
@@ -689,6 +690,28 @@ class KeyboardAndExportTest {
     }
 
     @Test
+    void activePageIndicatorFollowsSelectedPageAndIsHiddenForPrinting() throws Exception {
+        onFx(() -> {
+            Rectangle indicator = (Rectangle) root.lookup("#activePageIndicator");
+            StackPane pageCanvas = (StackPane) root.lookup("#pageCanvas");
+
+            assertTrue(indicator.isVisible());
+            assertEquals(10.0, indicator.getX(), 0.01);
+            assertEquals(630.0, indicator.getWidth(), 0.01);
+
+            controller.rightPageButton.fire();
+            assertTrue(indicator.isVisible());
+            assertEquals(650.0, indicator.getX(), 0.01);
+
+            WritableImage editor = pageCanvas.snapshot(null, null);
+            WritableImage printed = (WritableImage) call("snapshotPageForPrint");
+            assertTrue(indicator.isVisible());
+            assertNotEquals(editor.getPixelReader().getColor(650, 100),
+                    printed.getPixelReader().getColor(650, 100));
+        });
+    }
+
+    @Test
     void formerVariableBlankTokenLoadsAsFixedBlankBlock() throws Exception {
         onFx(() -> {
             call("appendSerializedToken", "LEERBLOCK|5");
@@ -999,6 +1022,67 @@ class KeyboardAndExportTest {
             assertEquals(List.of("D|NORMAL", "F|NORMAL", "E|NORMAL"), tokens(controller.Gridpane1));
             Pane annotations = (Pane) root.lookup("#annotationOverlay");
             assertEquals(1, annotations.getChildren().stream().filter(Path.class::isInstance).count());
+        });
+    }
+
+    @Test
+    void selectedNoteCanBeMovedToAnotherSlot() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            tap(KeyCode.F);
+            call("selectNote", slot(controller.Gridpane1, "E|NORMAL"), controller.Gridpane1);
+            root.layout();
+
+            StackPane lastNote = slot(controller.Gridpane1, "F|NORMAL");
+            Bounds bounds = lastNote.localToScene(lastNote.getBoundsInLocal());
+            assertTrue((Boolean) call("moveNoteTo", controller.Gridpane1, 1, 1,
+                    bounds.getMaxX() + 20, bounds.getMinY() + bounds.getHeight() / 2));
+
+            assertEquals(List.of("D|NORMAL", "F|NORMAL", "E|NORMAL"), tokens(controller.Gridpane1));
+            assertPosition(slot(controller.Gridpane1, "E|NORMAL"), 2, 1);
+            assertNotNull(slot(controller.Gridpane1, "E|NORMAL").getEffect());
+        });
+    }
+
+    @Test
+    void selectedNoteCanBeMovedToTheOtherPage() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            call("selectNote", slot(controller.Gridpane1, "D|NORMAL"), controller.Gridpane1);
+            controller.rightPageButton.fire();
+            tap(KeyCode.G);
+            root.layout();
+
+            StackPane target = slot(controller.Gridpane2, "G|NORMAL");
+            Bounds bounds = target.localToScene(target.getBoundsInLocal());
+            assertTrue((Boolean) call("moveNoteTo", controller.Gridpane1, 0, 1,
+                    bounds.getMaxX() + 20, bounds.getMinY() + bounds.getHeight() / 2));
+
+            assertTrue(tokens(controller.Gridpane1).isEmpty());
+            assertEquals(List.of("G|NORMAL", "D|NORMAL"), tokens(controller.Gridpane2));
+            assertNotNull(slot(controller.Gridpane2, "D|NORMAL").getEffect());
+        });
+    }
+
+    @Test
+    void selectedRepeatMarkerCanBeMovedToAnotherSlot() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            call("appendSerializedToken", "WIEDERHOLUNG|EINZELSTRICH");
+            tap(KeyCode.E);
+            call("selectNote", slot(controller.Gridpane1, "WIEDERHOLUNG|EINZELSTRICH"), controller.Gridpane1);
+            root.layout();
+
+            StackPane lastNote = slot(controller.Gridpane1, "E|NORMAL");
+            Bounds bounds = lastNote.localToScene(lastNote.getBoundsInLocal());
+            assertTrue((Boolean) call("moveNoteTo", controller.Gridpane1, 1, 1,
+                    bounds.getMaxX() + 20, bounds.getMinY() + bounds.getHeight() / 2));
+
+            assertEquals(List.of("D|NORMAL", "E|NORMAL", "WIEDERHOLUNG|EINZELSTRICH"),
+                    tokens(controller.Gridpane1));
+            assertPosition(slot(controller.Gridpane1, "WIEDERHOLUNG|EINZELSTRICH"), 2, 1);
+            assertNotNull(slot(controller.Gridpane1, "WIEDERHOLUNG|EINZELSTRICH").getEffect());
         });
     }
 
