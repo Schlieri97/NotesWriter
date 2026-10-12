@@ -14,6 +14,7 @@ import javafx.print.Paper;
 import javafx.print.Printer;
 import javafx.scene.Node;
 import javafx.scene.Group;
+import javafx.scene.Parent;
 import javafx.scene.Cursor;
 import javafx.scene.control.*;
 import javafx.scene.effect.DropShadow;
@@ -595,8 +596,10 @@ public class Controller {
                   Erst beim Loslassen der linken Maustaste wird die Auswahl übernommen.
                 • Ein Linksklick außerhalb der markierten Noten hebt die Auswahl auf und schließt das
                   Auswahlmenü. Ein Klick auf eine andere Note wählt diese Note aus.
-                • Eine einzelne markierte Note oder ein Wiederholungszeichen kann mit gedrückter
-                  linker Maustaste an eine andere Position auf derselben oder der anderen Seite verschoben werden.
+                • Eine einzelne markierte Note oder ein Wiederholungszeichen kann mit gedrückter linker
+                  Maustaste an eine andere Position auf derselben oder der anderen Seite verschoben werden.
+                • Mehrere markierte Noten können gemeinsam mit gedrückter linker Maustaste an die
+                  Cursorposition auf derselben oder der anderen Seite verschoben werden.
                 • Mit einem Rechtsklick auf ein markiertes Element öffnet sich das Auswahlmenü.
                   Dort stehen „Auswahl aufheben“ und „Ausgewählte Elemente löschen“ zur Verfügung.
 
@@ -1484,9 +1487,14 @@ public class Controller {
 
     private void selectNotesInRectangle(Bounds selectionBounds) {
         List<StackPane> notes = new ArrayList<>();
+        List<StackPane> repeatMarkers = new ArrayList<>();
         for (GridPane grid : List.of(Gridpane1, Gridpane2)) {
             for (Node node : grid.getChildren()) {
                 if (!(node instanceof StackPane noteContainer) || !isSelectableContainer(noteContainer)) {
+                    continue;
+                }
+                if (isRepeatMarker(noteContainer)) {
+                    repeatMarkers.add(noteContainer);
                     continue;
                 }
                 Bounds noteBounds = noteBoundsInPage(noteContainer, grid);
@@ -1494,6 +1502,30 @@ public class Controller {
                     notes.add(noteContainer);
                 }
             }
+        }
+
+        // A repeat marker spans the complete note height for layout purposes,
+        // but only its visible bars/caps are selectable. If such a bar overlaps
+        // a note selected by the rectangle, the note wins; clicking the bar
+        // directly still selects the repeat marker via its mouse handler.
+        for (StackPane repeatMarker : repeatMarkers) {
+            GridPane grid = findNoteGrid(repeatMarker);
+            if (grid == null) {
+                continue;
+            }
+            Bounds repeatBounds = repeatMarkerLineBoundsInPage(repeatMarker);
+            if (!selectionBounds.intersects(repeatBounds)) {
+                continue;
+            }
+            // The marker's layout bounds cover the complete slot and can
+            // overlap the note below even where no bar is drawn. Once a note
+            // is inside the rectangle, keep that rectangle selection focused
+            // on notes; the repeat remains selectable by clicking its bar.
+            if (!notes.isEmpty()
+                    && selectionBounds.intersects(noteBoundsInPage(repeatMarker, grid))) {
+                continue;
+            }
+            notes.add(repeatMarker);
         }
         setSelectedNotes(notes);
         for (PageTextAnnotation annotation : textAnnotations) {
@@ -1551,6 +1583,42 @@ public class Controller {
         return new javafx.geometry.BoundingBox(minX, minY, maxX - minX, maxY - minY);
     }
 
+    private Bounds repeatMarkerLineBoundsInPage(StackPane repeatMarker) {
+        double minX = Double.POSITIVE_INFINITY;
+        double minY = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double maxY = Double.NEGATIVE_INFINITY;
+
+        for (Node child : repeatMarker.getChildren()) {
+            List<Node> visualLines = new ArrayList<>();
+            collectRepeatLines(child, visualLines);
+            for (Node line : visualLines) {
+                Bounds bounds = pageCanvas.sceneToLocal(line.localToScene(line.getBoundsInLocal()));
+                minX = Math.min(minX, bounds.getMinX());
+                minY = Math.min(minY, bounds.getMinY());
+                maxX = Math.max(maxX, bounds.getMaxX());
+                maxY = Math.max(maxY, bounds.getMaxY());
+            }
+        }
+
+        if (minX == Double.POSITIVE_INFINITY) {
+            return pageCanvas.sceneToLocal(
+                    repeatMarker.localToScene(repeatMarker.getBoundsInLocal()));
+        }
+        return new javafx.geometry.BoundingBox(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private void collectRepeatLines(Node node, List<Node> lines) {
+        if (node instanceof Line) {
+            lines.add(node);
+        }
+        if (node instanceof Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
+                collectRepeatLines(child, lines);
+            }
+        }
+    }
+
     private boolean isSelectableContainer(StackPane node) {
         return node.getUserData() instanceof String token &&
                 isSelectableToken(token);
@@ -1583,6 +1651,9 @@ public class Controller {
                         : "Seite2".equals(payload[1]) ? Gridpane2 : null;
                 int sourceColumn = Integer.parseInt(payload[2]);
                 int sourceRow = Integer.parseInt(payload[3]);
+                if (selectedNoteContainers.size() > 1) {
+                    return moveSelectedNotesTo(sourceGrid, event.getSceneX(), event.getSceneY());
+                }
                 return moveNoteTo(sourceGrid, sourceColumn, sourceRow,
                         event.getSceneX(), event.getSceneY());
             } catch (NumberFormatException ignored) {
@@ -1609,7 +1680,35 @@ public class Controller {
 
     private boolean moveNoteTo(GridPane sourceGrid, int sourceColumn, int sourceRow,
                                 double sceneX, double sceneY) {
-        if (sourceGrid == null || sourceColumn < 0 || sourceRow < 0) {
+        if (sourceColumn < 0 || sourceRow < 0) {
+            return false;
+        }
+        return moveElementsTo(sourceGrid, List.of(new NoteSlot(sourceColumn, sourceRow)), sceneX, sceneY);
+    }
+
+    private boolean moveSelectedNotesTo(GridPane sourceGrid, double sceneX, double sceneY) {
+        if (selectedNoteContainers.size() < 2 || sourceGrid == null
+                || selectedNoteContainers.stream().anyMatch(this::isRepeatMarker)
+                || selectedNoteContainers.stream().anyMatch(note -> findNoteGrid(note) != sourceGrid)) {
+            return false;
+        }
+
+        List<NoteSlot> selectedSlots = selectedNoteContainers.stream()
+                .map(note -> new NoteSlot(GridPane.getColumnIndex(note), GridPane.getRowIndex(note)))
+                .filter(slot -> slot.column() >= 0 && slot.row() >= 0)
+                .distinct()
+                .sorted(Comparator.comparingInt(NoteSlot::row).thenComparingInt(NoteSlot::column))
+                .toList();
+        if (selectedSlots.size() != selectedNoteContainers.size()) {
+            return false;
+        }
+        return moveElementsTo(sourceGrid, selectedSlots, sceneX, sceneY);
+    }
+
+    private boolean moveElementsTo(GridPane sourceGrid, List<NoteSlot> selectedSlots,
+                                   double sceneX, double sceneY) {
+        if (sourceGrid == null || selectedSlots.isEmpty()
+                || selectedSlots.stream().anyMatch(slot -> slot.column() < 0 || slot.row() < 0)) {
             return false;
         }
 
@@ -1621,17 +1720,17 @@ public class Controller {
 
         GridPane targetGrid = pagePoint.getX() < PAGE_WIDTH / 2.0 ? Gridpane1 : Gridpane2;
         List<SerializedGridToken> sourceTokens = collectGridTokens(sourceGrid);
-        SerializedGridToken movedToken = sourceTokens.stream()
+        Set<NoteSlot> selectedSlotSet = Set.copyOf(selectedSlots);
+        List<SerializedGridToken> movedTokens = sourceTokens.stream()
                 .filter(token -> !token.pause() && isMovableToken(token.token())
-                        && token.column() == sourceColumn && token.row() == sourceRow)
-                .findFirst()
-                .orElse(null);
-        if (movedToken == null) {
+                        && selectedSlotSet.contains(new NoteSlot(token.column(), token.row())))
+                .toList();
+        if (movedTokens.size() != selectedSlots.size()) {
             return false;
         }
 
         List<SerializedGridToken> sourceReplacement = sourceTokens.stream()
-                .filter(token -> token != movedToken)
+                .filter(token -> !movedTokens.contains(token))
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         List<SerializedGridToken> targetBase = sourceGrid == targetGrid
                 ? sourceReplacement : collectGridTokens(targetGrid);
@@ -1643,61 +1742,70 @@ public class Controller {
                 .filter(token -> isNoteToken(token.token()))
                 .count();
         List<SerializedGridToken> targetReplacement = new ArrayList<>(targetBase);
-        targetReplacement.add(insertionIndex,
-                new SerializedGridToken(movedToken.token(), -1, -1, false));
+        targetReplacement.addAll(insertionIndex, movedTokens.stream()
+                .map(token -> new SerializedGridToken(token.token(), -1, -1, false))
+                .toList());
 
         if (!canFitGridTokens(targetReplacement)) {
-            keyboardStatus.setText(isNoteToken(movedToken.token())
-                    ? "Für diese Note ist auf der Zielseite kein Platz mehr."
-                    : "Für das Wiederholungszeichen ist auf der Zielseite kein Platz mehr.");
+            keyboardStatus.setText(movedTokens.stream().allMatch(token -> isNoteToken(token.token()))
+                    ? "Für diese Noten ist auf der Zielseite kein Platz mehr."
+                    : "Für die ausgewählten Elemente ist auf der Zielseite kein Platz mehr.");
             return false;
         }
         if (sourceGrid == targetGrid && sameTokenSequence(sourceTokens, targetReplacement)) {
             return false;
         }
 
-        int movedElementIndex = elementIndexForSlot(sourceTokens, sourceColumn, sourceRow);
-        if (movedElementIndex < 0) {
+        List<Integer> movedElementIndices = movedTokens.stream()
+                .map(token -> elementIndexForSlot(sourceTokens, token.column(), token.row()))
+                .toList();
+        if (movedElementIndices.stream().anyMatch(index -> index < 0)) {
             return false;
         }
-        boolean movingNote = isNoteToken(movedToken.token());
-        int movedNoteIndex = movingNote
-                ? noteIndexForSlot(sourceTokens, sourceColumn, sourceRow) : -1;
+        List<Integer> movedNoteIndices = movedTokens.stream()
+                .filter(token -> isNoteToken(token.token()))
+                .map(token -> noteIndexForSlot(sourceTokens, token.column(), token.row()))
+                .toList();
+        if (movedNoteIndices.stream().anyMatch(index -> index < 0)) {
+            return false;
+        }
         List<SlurMovePlan> sourceSlurs = captureSlurMovePlans(sourceGrid, sourceTokens);
         List<SlurMovePlan> targetSlurs = sourceGrid == targetGrid
                 ? List.of() : captureSlurMovePlans(targetGrid, targetBase);
 
         List<Integer> sourceElementIdentities = elementIdentityOrder(sourceTokens);
-        sourceElementIdentities.remove(movedElementIndex);
+        removeIndices(sourceElementIdentities, movedElementIndices);
+        List<Integer> movedElementIds = movedElementIndices.stream()
+                .map(index -> MOVED_ELEMENT_ID - movedElementIndices.indexOf(index))
+                .toList();
         List<Integer> targetElementIdentities;
         List<Integer> sourceNoteIdentities = noteIdentityOrder(sourceTokens.size(), sourceTokens);
-        List<Integer> targetNoteIdentities;
-        if (movingNote) {
-            sourceNoteIdentities.remove(movedNoteIndex);
+        removeIndices(sourceNoteIdentities, movedNoteIndices);
+        Map<Integer, Integer> movedNoteIdentities = new LinkedHashMap<>();
+        for (int i = 0; i < movedNoteIndices.size(); i++) {
+            movedNoteIdentities.put(movedNoteIndices.get(i), MOVED_ELEMENT_ID - i);
         }
+        List<Integer> movedNoteIds = movedNoteIndices.stream()
+                .map(movedNoteIdentities::get)
+                .toList();
+        List<Integer> targetNoteIdentities;
         if (sourceGrid == targetGrid) {
-            sourceElementIdentities.add(elementInsertionIndex, MOVED_ELEMENT_ID);
+            sourceElementIdentities.addAll(elementInsertionIndex, movedElementIds);
             targetElementIdentities = sourceElementIdentities;
-            if (movingNote) {
-                sourceSlurs = sourceSlurs.stream()
-                        .map(plan -> plan.withMovedNote(movedNoteIndex))
-                        .toList();
-                sourceNoteIdentities.add(noteInsertionIndex, MOVED_ELEMENT_ID);
-            }
+            sourceSlurs = sourceSlurs.stream()
+                    .map(plan -> plan.withMovedNotes(movedNoteIdentities))
+                    .toList();
+            sourceNoteIdentities.addAll(noteInsertionIndex, movedNoteIds);
             targetNoteIdentities = sourceNoteIdentities;
         } else {
             targetElementIdentities = elementIdentityOrder(targetBase);
-            targetElementIdentities.add(elementInsertionIndex, MOVED_ELEMENT_ID);
-            if (movingNote) {
-                sourceSlurs = sourceSlurs.stream()
-                        .map(plan -> plan.withoutMovedNote(movedNoteIndex))
-                        .filter(plan -> plan.oldNoteIndices().size() >= 2)
-                        .toList();
-                targetNoteIdentities = noteIdentityOrder(targetBase.size(), targetBase);
-                targetNoteIdentities.add(noteInsertionIndex, MOVED_ELEMENT_ID);
-            } else {
-                targetNoteIdentities = noteIdentityOrder(targetBase.size(), targetBase);
-            }
+            targetElementIdentities.addAll(elementInsertionIndex, movedElementIds);
+            sourceSlurs = sourceSlurs.stream()
+                    .map(plan -> plan.withoutMovedNotes(movedNoteIdentities.keySet()))
+                    .filter(plan -> plan.oldNoteIndices().size() >= 2)
+                    .toList();
+            targetNoteIdentities = noteIdentityOrder(targetBase.size(), targetBase);
+            targetNoteIdentities.addAll(noteInsertionIndex, movedNoteIds);
         }
 
         selectPage(targetGrid);
@@ -1716,8 +1824,12 @@ public class Controller {
             restoreMovedSlurs(sourceGrid, sourceSlurs, sourceNoteIdentities);
             restoreMovedSlurs(targetGrid, targetSlurs, targetNoteIdentities);
         }
-        selectMovedElement(targetGrid, targetElementIdentities);
+        selectMovedElements(targetGrid, targetElementIdentities);
         return true;
+    }
+
+    private void removeIndices(List<Integer> values, List<Integer> indices) {
+        indices.stream().sorted(Comparator.reverseOrder()).forEach(values::remove);
     }
 
     private boolean sameTokenSequence(List<SerializedGridToken> first,
@@ -1821,21 +1933,30 @@ public class Controller {
         }
     }
 
-    private void selectMovedElement(GridPane grid, List<Integer> identityOrder) {
-        int movedIndex = identityOrder.indexOf(MOVED_ELEMENT_ID);
-        if (movedIndex < 0) {
+    private void selectMovedElements(GridPane grid, List<Integer> identityOrder) {
+        List<Integer> movedIndices = new ArrayList<>();
+        for (int i = 0; i < identityOrder.size(); i++) {
+            if (identityOrder.get(i) <= MOVED_ELEMENT_ID) {
+                movedIndices.add(i);
+            }
+        }
+        if (movedIndices.isEmpty()) {
             return;
         }
         List<SerializedGridToken> elements = collectGridTokens(grid).stream()
                 .filter(token -> !token.pause() && isMovableToken(token.token()))
                 .toList();
-        if (movedIndex >= elements.size()) {
+        if (movedIndices.stream().anyMatch(index -> index >= elements.size())) {
             return;
         }
-        SerializedGridToken moved = elements.get(movedIndex);
-        Node node = findGridSlotNode(grid, moved.column(), moved.row());
-        if (node instanceof StackPane container) {
-            setSelectedNotes(List.of(container));
+        List<StackPane> movedContainers = movedIndices.stream()
+                .map(elements::get)
+                .map(element -> findGridSlotNode(grid, element.column(), element.row()))
+                .filter(StackPane.class::isInstance)
+                .map(StackPane.class::cast)
+                .toList();
+        if (!movedContainers.isEmpty()) {
+            setSelectedNotes(movedContainers);
             selectedNoteGrid = grid;
         }
     }
@@ -2337,6 +2458,9 @@ public class Controller {
         marker.setPrefHeight(87);
         marker.setMaxHeight(87);
         marker.setAlignment(Pos.TOP_CENTER);
+        // Transparent space around the marker must not cover the note below;
+        // the visible Line children still receive clicks and bubble them here.
+        marker.setPickOnBounds(false);
 
         marker.getChildren().add(createCisDesFingering());
 
@@ -2666,14 +2790,19 @@ public class Controller {
 
     private void installNoteSelectionHandler(Node node, StackPane noteContainer, GridPane grid) {
         node.setOnDragDetected(event -> {
-            if (selectedNoteContainers.size() != 1
-                    || selectedNoteContainers.get(0) != noteContainer) {
+            if (selectedNoteContainers.isEmpty()
+                    || !selectedNoteContainers.contains(noteContainer)) {
                 return;
             }
             Integer column = GridPane.getColumnIndex(noteContainer);
             Integer row = GridPane.getRowIndex(noteContainer);
             GridPane sourceGrid = findNoteGrid(noteContainer);
             if (sourceGrid == null || column == null || row == null) {
+                return;
+            }
+            if (selectedNoteContainers.size() > 1
+                    && (selectedNoteContainers.stream().anyMatch(this::isRepeatMarker)
+                    || selectedNoteContainers.stream().anyMatch(selected -> findNoteGrid(selected) != sourceGrid))) {
                 return;
             }
 
@@ -3552,15 +3681,15 @@ public class Controller {
     private static final int MOVED_ELEMENT_ID = -1;
 
     private record SlurMovePlan(List<Integer> oldNoteIndices) {
-        private SlurMovePlan withMovedNote(int movedNoteIndex) {
+        private SlurMovePlan withMovedNotes(Map<Integer, Integer> movedNoteIdentities) {
             return new SlurMovePlan(oldNoteIndices.stream()
-                    .map(index -> index == movedNoteIndex ? MOVED_ELEMENT_ID : index)
+                    .map(index -> movedNoteIdentities.getOrDefault(index, index))
                     .toList());
         }
 
-        private SlurMovePlan withoutMovedNote(int movedNoteIndex) {
+        private SlurMovePlan withoutMovedNotes(Set<Integer> movedNoteIndices) {
             return new SlurMovePlan(oldNoteIndices.stream()
-                    .filter(index -> index != movedNoteIndex)
+                    .filter(index -> !movedNoteIndices.contains(index))
                     .toList());
         }
     }

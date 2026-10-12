@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.event.Event;
 import javafx.fxml.FXMLLoader;
 import javafx.geometry.Bounds;
+import javafx.geometry.BoundingBox;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -1046,6 +1047,30 @@ class KeyboardAndExportTest {
     }
 
     @Test
+    void selectedNotesCanBeMovedAsOneBlockToCursorPosition() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            tap(KeyCode.F);
+            tap(KeyCode.G);
+            call("setSelectedNotes", List.of(
+                    slot(controller.Gridpane1, "D|NORMAL"),
+                    slot(controller.Gridpane1, "E|NORMAL")));
+            root.layout();
+
+            StackPane lastNote = slot(controller.Gridpane1, "G|NORMAL");
+            Bounds bounds = lastNote.localToScene(lastNote.getBoundsInLocal());
+            assertTrue((Boolean) call("moveSelectedNotesTo", controller.Gridpane1,
+                    bounds.getMaxX() + 20, bounds.getMinY() + bounds.getHeight() / 2));
+
+            assertEquals(List.of("F|NORMAL", "G|NORMAL", "D|NORMAL", "E|NORMAL"),
+                    tokens(controller.Gridpane1));
+            assertNotNull(slot(controller.Gridpane1, "D|NORMAL").getEffect());
+            assertNotNull(slot(controller.Gridpane1, "E|NORMAL").getEffect());
+        });
+    }
+
+    @Test
     void selectedNoteCanBeMovedToTheOtherPage() throws Exception {
         onFx(() -> {
             tap(KeyCode.D);
@@ -1083,6 +1108,39 @@ class KeyboardAndExportTest {
                     tokens(controller.Gridpane1));
             assertPosition(slot(controller.Gridpane1, "WIEDERHOLUNG|EINZELSTRICH"), 2, 1);
             assertNotNull(slot(controller.Gridpane1, "WIEDERHOLUNG|EINZELSTRICH").getEffect());
+        });
+    }
+
+    @Test
+    void noteSelectionDoesNotAlsoSelectRepeatBarButBarCanBeClicked() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            call("appendSerializedToken", "WIEDERHOLUNG|ANFANG");
+            tap(KeyCode.E);
+            root.layout();
+
+            StackPane repeat = slot(controller.Gridpane1, "WIEDERHOLUNG|ANFANG");
+            StackPane note = slot(controller.Gridpane1, "E|NORMAL");
+            Line repeatBar = repeat.getChildren().stream()
+                    .filter(Line.class::isInstance)
+                    .map(Line.class::cast)
+                    .findFirst().orElseThrow();
+            Pane page = (Pane) root.lookup("#pageCanvas");
+            Bounds noteBounds = page.sceneToLocal(note.localToScene(note.getBoundsInLocal()));
+            Bounds barBounds = page.sceneToLocal(repeatBar.localToScene(repeatBar.getBoundsInLocal()));
+            double minX = Math.min(noteBounds.getMinX(), barBounds.getMinX()) - 2;
+            double minY = Math.min(noteBounds.getMinY(), barBounds.getMinY()) - 2;
+            double maxX = Math.max(noteBounds.getMaxX(), barBounds.getMaxX()) + 2;
+            double maxY = Math.max(noteBounds.getMaxY(), barBounds.getMaxY()) + 2;
+
+            call("selectNotesInRectangle", new BoundingBox(minX, minY,
+                    maxX - minX, maxY - minY));
+            assertNotNull(note.getEffect());
+            assertNull(repeat.getEffect());
+
+            mouseClick(repeatBar);
+            assertNull(note.getEffect());
+            assertNotNull(repeat.getEffect());
         });
     }
 
