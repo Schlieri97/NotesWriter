@@ -48,7 +48,20 @@ jpackage --type app-image \
 
 app="target/macos-image/$name.app"
 # Die Java-Sound-Aufnahme benötigt einen Zwecktext in der äußeren App-Plist.
-/usr/libexec/PlistBuddy -c 'Add :NSMicrophoneUsageDescription string Das Mikrofon erkennt gespielte Floetentoene und fuegt die passenden Noten ein. Audiodaten werden nicht gespeichert oder hochgeladen.' "$app/Contents/Info.plist"
+# jpackage kann den Schlüssel bereits mit einem Standardtext anlegen.
+python3 - "$app/Contents/Info.plist" <<'PY'
+import pathlib
+import plistlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+info = plistlib.loads(path.read_bytes())
+info["NSMicrophoneUsageDescription"] = (
+    "Das Mikrofon erkennt gespielte Floetentoene und fuegt die passenden Noten ein. "
+    "Audiodaten werden nicht gespeichert oder hochgeladen."
+)
+path.write_bytes(plistlib.dumps(info, sort_keys=False))
+PY
 plutil -lint "$app/Contents/Info.plist"
 # Nach der Plist-Änderung die lokale Signatur erneuern. Dies ist keine
 # Developer-ID-Signatur und keine Apple-Notarisierung.
