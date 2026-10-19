@@ -78,7 +78,8 @@ import sys
 import tempfile
 
 launcher = pathlib.Path(sys.argv[1]).resolve()
-subprocess.run(["lipo", "-verify_arch", sys.argv[2], str(launcher)], check=True)
+# -verify_arch liest alle folgenden Argumente als Architekturen.
+subprocess.run(["lipo", str(launcher), "-verify_arch", sys.argv[2]], check=True)
 env = dict(os.environ, JAVA_HOME="/nonexistent", PATH="/usr/bin:/bin:/usr/sbin:/sbin")
 with open("target/macos-startup.log", "w+") as log, tempfile.TemporaryDirectory() as cwd:
     process = subprocess.Popen([str(launcher)], cwd=cwd, env=env, stdout=log, stderr=log)
