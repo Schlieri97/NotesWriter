@@ -31,6 +31,8 @@ Einen einzelnen Ton etwa 0,3 Sekunden halten: Das erkannte Griffbild wird auf
 der aktiven Seite eingefügt. Ein gehaltener Ton wird nur einmal übernommen;
 für denselben Ton erneut etwa 0,2 Sekunden pausieren. Stabile Tonwechsel können
 auch ohne Pause übernommen werden. **Mikrofon stoppen** beendet die Aufnahme.
+Während das Mikrofon aktiv ist, zeigt ein roter Hinweis oben mittig auf der Seite
+„Mikrofon ist an“. Dieser Hinweis ist nur im Editor sichtbar und wird nicht gedruckt.
 
 Es werden keine Referenz-Tondateien benötigt, keine Aufnahmen gespeichert und
 keine Audiodaten hochgeladen. Die Tonhöhe wird lokal aus dem Mikrofonsignal
@@ -85,7 +87,7 @@ gewählt, da sich verschiedene Griffe derselben Tonhöhe akustisch nicht untersc
 
 - 🧹 **Löschen:** / _**Delete:**_
   - Entferne markierte Noten über das Kontextmenü oder mit Entf/Backspace.
-  - Entf/Backspace löscht zuerst markierte Noten, Pausenstriche oder Wiederholungszeichen; ohne Auswahl die letzte Eingabe.
+  - Entf/Backspace löscht zuerst markierte Noten, leere Notenblöcke, Pausenstriche oder Wiederholungszeichen; ohne Auswahl die letzte Eingabe.
   - Markierter Freitext lässt sich ebenfalls mit Entf/Backspace löschen. Escape hebt jede Markierung auf.
   - _Delete selected elements with Backspace/Delete or the context menu._
 
@@ -181,7 +183,9 @@ _Each line represents a note and its corresponding page._
 - **„Linke Seite“ / „Rechte Seite“** → wählt die gewünschte Notenseite aus
 - **„Pausenstrich“** → fügt einen waagerechten Pausenstrich ein
 - **↶ Rückgängig / ↷ Wiederherstellen** → Bearbeitungsschritte zurücknehmen oder erneut ausführen; auch mit **Strg+Z** und **Strg+Umschalt+Z**
-- **„Leerer Notenblock“ / Enter** → beendet den begonnenen Block und lässt eine ganze Zeile frei, auch als letzte Zeile der Seite; der freie Block ist im Editor beschriftet, die Beschriftung erscheint nicht im Druck/PDF
+- **„Leerer Notenblock“ / Enter** → fügt standardmäßig einen freien Block mit 41 Notenplätzen ein; der freie Block ist im Editor beschriftet, die Beschriftung erscheint nicht im Druck/PDF
+- **Leerblock anpassen** → direkt am Block mit **− / +** jeweils einen Notenplatz entfernen oder hinzufügen; per Rechtsklick stehen Schnellgrößen (1, 10, 20, 30, 41) und eine freie Eingabe bereit. Wenn die Größe nicht mehr in die aktuelle Zeile passt, beginnt der Block geschlossen in der nächsten Zeile. Ziehen an der linken oder rechten Kante bleibt für die Feinsteuerung möglich; in der Mitte ziehen verschiebt den Block und rastet am Notenraster ein
+- **Leeren Notenblock löschen** → Beschriftung anklicken und Backspace / Entf drücken; mehrere Leerblöcke lassen sich mit einem Auswahlrahmen markieren und gemeinsam löschen
 - **Freitext** → nach dem Einfügen per Rechtsklick die Schriftgröße wählen oder eine eigene Größe zwischen 8 und 72 pt eingeben
 - **Backspace / Entf** → löscht die letzte Eingabe der aktiven Seite; ein zuletzt eingefügter Leerblock wird als Ganzes entfernt
 - **„Drucken / PDF exportieren“** → wahlweise mit Cis/Des auffüllen oder Leerstellen beibehalten; für PDF einen PDF-Drucker auswählen
@@ -216,7 +220,7 @@ Ein gehaltener Ton wird nicht wiederholt eingefügt. Die Tasten stehen auch in d
 
 Beispiel: **D** schreibt D, **Strg+D** ein langes D und **Alt+Umschalt+D** ein kurzes Oktav-D.
 Nicht verfügbare Oktav-Varianten werden mit einem Hinweis abgewiesen.
-Ein Leerblock wird als `Seite1;LEERBLOCK` bzw. `Seite2;LEERBLOCK` gespeichert.
+Ein Standard-Leerblock wird als `Seite1;LEERBLOCK` bzw. `Seite2;LEERBLOCK` gespeichert. Eine angepasste Größe steht als `LEERBLOCK|SIZE|N` in der Datei.
 
 ---
 

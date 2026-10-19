@@ -1,5 +1,6 @@
 package com.code.noteswriter;
 
+import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.beans.binding.Bindings;
@@ -49,6 +50,8 @@ public class Controller {
     @FXML private Spinner<Integer> microphoneOctave;
     @FXML private Button microphoneButton;
     @FXML private Label microphoneStatus;
+    @FXML private HBox microphoneOverlay;
+    @FXML private Button microphoneOverlayButton;
     private MicrophoneInput microphone;
     private String lastMicrophoneDetection;
 
@@ -133,6 +136,13 @@ public class Controller {
         microphoneThreshold.setDisable(running);
         concertPitch.setDisable(running);
         microphoneOctave.setDisable(running);
+        if (microphoneOverlay != null) {
+            microphoneOverlay.setVisible(running);
+            if (microphoneOverlayButton != null) {
+                microphoneOverlayButton.setAccessibleText(running
+                        ? "Mikrofon ist an" : "Mikrofon ist aus");
+            }
+        }
     }
     @FXML
     public StackPane printArea;
@@ -171,8 +181,13 @@ public class Controller {
     private static final double NOTE_GAP = 5.5;
     private static final String EMPTY_BLOCK = "LEERBLOCK";
     private static final String EMPTY_BLOCK_OWNER = "emptyBlockOwner";
+    private static final String EMPTY_BLOCK_SIZE = "emptyBlockSize";
+    private static final String EMPTY_BLOCK_CONTROL_ACTION = "emptyBlockControlAction";
     private static final String EMPTY_BLOCK_GUIDE = "LEERER NOTENBLOCK – WIRD NICHT GEDRUCKT";
-    private static final double EMPTY_BLOCK_GUIDE_WIDTH = 41 * (NOTE_SLOT_WIDTH + NOTE_GAP) - NOTE_GAP;
+    private static final int DEFAULT_EMPTY_BLOCK_SIZE = 41;
+    private static final int MIN_EMPTY_BLOCK_SIZE = 1;
+    private static final int MAX_EMPTY_BLOCK_SIZE = 41;
+    private static final double EMPTY_BLOCK_SLOT_PITCH = NOTE_SLOT_WIDTH + NOTE_GAP;
     private static final int DEFAULT_CIRCLE_FONT_SIZE = 18;
     private static final int DEFAULT_MARCH_FONT_SIZE = 22;
     private static final Map<KeyCode, String> NOTE_KEYS = Map.ofEntries(
@@ -280,12 +295,22 @@ public class Controller {
     private StackPane selectedNoteContainer;
     private GridPane selectedNoteGrid;
     private final List<StackPane> selectedNoteContainers = new ArrayList<>();
+    private final Set<StackPane> selectedEmptyBlocks = new LinkedHashSet<>();
     private final Set<Text> selectedTextAnnotations = new LinkedHashSet<>();
     private Path selectedSlurPath;
     private final List<PauseMarker> selectedPauseMarkers = new ArrayList<>();
     private Rectangle selectionRectangle;
     private Point2D selectionStart;
     private boolean draggingSelection;
+    private StackPane emptyBlockDragOwner;
+    private double emptyBlockDragStartX;
+    private double emptyBlockDragStartY;
+    private double emptyBlockDragStartPageX;
+    private int emptyBlockDragStartSize;
+    private boolean emptyBlockDragMoved;
+    private boolean emptyBlockDragWasSelected;
+    private boolean emptyBlockResizeLeft;
+    private boolean emptyBlockResizeRight;
     public void setModel(Model model) {
         this.model = model;
         selectPage(Gridpane1);
@@ -515,7 +540,7 @@ public class Controller {
         rightPageButton.setTooltip(new Tooltip("Rechte Notenseite aktivieren"));
         undoButton.setTooltip(new Tooltip("Letzte Änderung rückgängig machen (Strg+Z)"));
         redoButton.setTooltip(new Tooltip("Rückgängig gemachte Änderung wiederherstellen (Strg+Umschalt+Z)"));
-        emptyBlockButton.setTooltip(new Tooltip("Aktuellen Block abschließen und eine ganze Zeile frei lassen, auch am Seitenende · Enter"));
+        emptyBlockButton.setTooltip(new Tooltip("41 Notenplätze frei lassen · an den Kanten in ganzen Plätzen anpassen · Enter"));
         Wiederholungszeichen.setTooltip(new Tooltip("Normalen Strich oder Wiederholungszeichen auswählen"));
         pauseStrokeButton.setTooltip(new Tooltip("Pausenstrich an der aktuellen Position einfügen"));
         addFreeTextButton.setTooltip(new Tooltip("Den Text aus dem Eingabefeld auf der Seite platzieren"));
@@ -582,11 +607,17 @@ public class Controller {
                 • Pro Tastendruck entsteht eine Note. In Textfeldern gelten die normalen Texteingaben.
 
                 Einen neuen Marsch beginnen
-                • „Leerer Notenblock“ oder Enter schließt den begonnenen Block ab und lässt danach einen
-                  ganzen waagerechten Notenblock leer. Der nächste Marsch beginnt im folgenden Block.
+                • „Leerer Notenblock“ oder Enter fügt standardmäßig einen Leerblock mit 41 Notenplätzen ein.
+                  Der nächste Marsch beginnt danach im folgenden Block.
                 • Am Anfang eines Blocks wird direkt dieser Block frei gelassen.
                 • Der Abstand bleibt beim Speichern, Laden und beim Auffüllen mit Cis/Des erhalten.
-                • Backspace / Entf nimmt einen zuletzt eingefügten Leerblock vollständig zurück.
+                • Die Größe lässt sich direkt am Leerblock mit − und + in einzelnen Notenplätzen ändern.
+                  Rechtsklick bietet Schnellgrößen (1, 10, 20, 30, 41) und eine freie Eingabe.
+                • An der linken oder rechten Kante ziehen ändert die Größe ebenfalls in ganzen Notenplätzen.
+                  Wenn die Größe nicht mehr in die aktuelle Zeile passt, beginnt der Block geschlossen
+                  in der nächsten Zeile. In der Mitte ziehen verschiebt den Block am Notenraster.
+                • Leerblock anklicken und mit Backspace / Entf vollständig löschen. Mehrere Leerblöcke
+                  lassen sich mit einem Auswahlrahmen markieren. Ohne Auswahl wird die letzte Eingabe gelöscht.
 
                 Elemente markieren
                 • Eine Note oder ein Wiederholungszeichen mit einem einfachen Linksklick markieren.
@@ -1029,6 +1060,8 @@ public class Controller {
         selectedTextAnnotations.clear();
         selectedSlurPath = null;
         selectedPauseMarkers.clear();
+        selectedEmptyBlocks.clear();
+        for (Node guide : emptyBlockOverlay.getChildren()) guide.setEffect(null);
     }
 
     @FXML
@@ -1325,6 +1358,7 @@ public class Controller {
         }
         if (isTextInputTarget(event.getTarget())) return;
         if (code == KeyCode.ESCAPE && (!selectedNoteContainers.isEmpty()
+                || !selectedEmptyBlocks.isEmpty()
                 || !selectedPauseMarkers.isEmpty() || !selectedTextAnnotations.isEmpty()
                 || selectedSlurPath != null || activeContextMenu != null)) {
             if (activeContextMenu != null) activeContextMenu.hide();
@@ -1349,7 +1383,8 @@ public class Controller {
         if (delete) {
             if (!selectedTextAnnotations.isEmpty()) {
                 removeSelectedTextAnnotations();
-            } else if (!selectedNoteContainers.isEmpty() || !selectedPauseMarkers.isEmpty()) {
+            } else if (!selectedNoteContainers.isEmpty() || !selectedPauseMarkers.isEmpty()
+                    || !selectedEmptyBlocks.isEmpty()) {
                 deleteSelectedNotesAndCompact();
             } else {
                 handleDeleteLastNoteAction(null);
@@ -1410,6 +1445,9 @@ public class Controller {
         }
 
         while (node != null) {
+            if (node.getProperties().get(EMPTY_BLOCK_OWNER) instanceof StackPane) {
+                return true;
+            }
             if (node instanceof StackPane stackPane && isSelectableContainer(stackPane)) {
                 return true;
             }
@@ -1528,6 +1566,12 @@ public class Controller {
             notes.add(repeatMarker);
         }
         setSelectedNotes(notes);
+        for (Node guide : emptyBlockOverlay.getChildren()) {
+            Bounds guideBounds = pageCanvas.sceneToLocal(guide.localToScene(guide.getLayoutBounds()));
+            if (selectionBounds.intersects(guideBounds)) {
+                addEmptyBlockToSelection(guide);
+            }
+        }
         for (PageTextAnnotation annotation : textAnnotations) {
             Bounds textBounds = pageCanvas.sceneToLocal(
                     annotation.text.localToScene(annotation.text.getBoundsInLocal()));
@@ -2055,11 +2099,10 @@ public class Controller {
         int column = 0;
         for (SerializedGridToken token : tokens) {
             if (token.pause()) continue;
-            if (EMPTY_BLOCK.equals(token.token())) {
-                row += column == 0 ? 17 : 34;
-                column = 0;
-                if (row > 120) return false;
-            } else {
+            int slots = isEmptyBlockToken(token.token())
+                    ? physicalEmptyBlockSize(emptyBlockSize(token.token()), column)
+                    : 1;
+            for (int slot = 0; slot < slots; slot++) {
                 if (row >= 119) return false;
                 if (column == 40) {
                     column = 0;
@@ -2070,6 +2113,25 @@ public class Controller {
             }
         }
         return true;
+    }
+
+    /**
+     * A block that would cross a row boundary starts on the next row so its
+     * visible guide stays contiguous. The default block keeps the existing
+     * "finish this row and leave the next row empty" behaviour.
+     */
+    private int physicalEmptyBlockSize(int logicalSize, int startColumn) {
+        int size = clampEmptyBlockSize(logicalSize);
+        if (emptyBlockStartsNextRow(size, startColumn)) {
+            return (41 - startColumn) + size;
+        }
+        return size;
+    }
+
+    private boolean emptyBlockStartsNextRow(int logicalSize, int startColumn) {
+        int size = clampEmptyBlockSize(logicalSize);
+        return startColumn > 0
+                && (size == DEFAULT_EMPTY_BLOCK_SIZE || startColumn + size > 41);
     }
 
     @FXML
@@ -2598,30 +2660,41 @@ public class Controller {
 
     @FXML
     private void handleEmptyBlockAction(ActionEvent event) {
-        // Der leere Block selbst muss vollständig auf die Seite passen.
-        // Ein weiterer Marsch danach ist in der letzten Zeile nicht erforderlich.
-        int nextRow = rowOffset + (columnOffset == 0 ? 17 : 34);
-        if (nextRow > 120) {
+        // Standardmäßig bleiben 41 Notenplätze frei. In einer begonnenen
+        // Zeile wird deren Rest plus eine vollständige Folgezeile reserviert,
+        // damit der bisherige "nächster Marsch"-Abstand erhalten bleibt.
+        List<SerializedGridToken> preview = new ArrayList<>(collectGridTokens(activeGridPane));
+        preview.add(new SerializedGridToken(EMPTY_BLOCK, columnOffset, rowOffset, false));
+        if (!canFitGridTokens(preview)) {
             keyboardStatus.setText("Für einen vollständigen leeren Notenblock reicht der Platz nicht. Bitte die andere Seite wählen.");
             return;
         }
         clearAllSelection();
         addEmptyBlock();
-        keyboardStatus.setText(nextRow == 120
+        keyboardStatus.setText(rowOffset >= 119
                 ? "Die letzte Zeile bleibt als Notenblock leer. Für weitere Noten bitte die andere Seite wählen."
                 : "Ein Notenblock bleibt leer. Der nächste Marsch beginnt im folgenden Block.");
     }
 
     private void addEmptyBlock() {
-        int nextRow = rowOffset + (columnOffset == 0 ? 17 : 34);
-        if (rowOffset >= 119 || nextRow > 120) {
+        addEmptyBlock(DEFAULT_EMPTY_BLOCK_SIZE);
+    }
+
+    private void addEmptyBlock(int requestedSize) {
+        if (activeGridPane == null || rowOffset >= 119) {
+            return;
+        }
+        int logicalSize = clampEmptyBlockSize(requestedSize);
+        int slotsToReserve = physicalEmptyBlockSize(logicalSize, columnOffset);
+        if (!canFitGridTokens(List.of(new SerializedGridToken(
+                emptyBlockToken(logicalSize), columnOffset, rowOffset, false)))) {
             return;
         }
         markDocumentDirty();
         StackPane owner = null;
         // Unsichtbare Slots bewahren Breite und Höhe auch ohne Druck-Auffüllung.
         // Nur der erste Slot trägt den Dateitoken; der ganze Abstand ist eine Eingabe.
-        while (rowOffset < nextRow) {
+        for (int index = 0; index < slotsToReserve; index++) {
             StackPane slot = new StackPane();
             slot.setMinSize(NOTE_SLOT_WIDTH, 87);
             slot.setPrefSize(NOTE_SLOT_WIDTH, 87);
@@ -2630,6 +2703,7 @@ public class Controller {
             if (owner == null) {
                 owner = slot;
                 owner.setUserData(EMPTY_BLOCK);
+                owner.getProperties().put(EMPTY_BLOCK_SIZE, logicalSize);
             }
             slot.getProperties().put(EMPTY_BLOCK_OWNER, owner);
             activeGridPane.add(slot, columnOffset, rowOffset, 1, 9);
@@ -2642,36 +2716,341 @@ public class Controller {
     private void refreshEmptyBlockGuides() {
         emptyBlockOverlay.getChildren().clear();
         for (GridPane grid : List.of(Gridpane1, Gridpane2)) {
+            // Nach einem Rebuild oder neuen Noten liegen die Rastergrenzen
+            // sonst bis zum nächsten JavaFX-Puls noch auf den alten Zeilen.
+            grid.applyCss();
+            grid.layout();
             for (Node node : grid.getChildren()) {
                 if (!(node instanceof StackPane owner) || !EMPTY_BLOCK.equals(owner.getUserData())) {
                     continue;
                 }
-                int ownerColumn = GridPane.getColumnIndex(owner);
-                int blankRow = GridPane.getRowIndex(owner) + (ownerColumn == 0 ? 0 : 17);
-                Node rowStart = grid.getChildren().stream()
-                        .filter(slot -> slot.getProperties().get(EMPTY_BLOCK_OWNER) == owner
-                                && Integer.valueOf(0).equals(GridPane.getColumnIndex(slot))
-                                && Integer.valueOf(blankRow).equals(GridPane.getRowIndex(slot)))
-                        .findFirst().orElse(null);
-                if (rowStart == null) {
-                    continue;
+                Integer ownerColumn = GridPane.getColumnIndex(owner);
+                Integer ownerRow = GridPane.getRowIndex(owner);
+                if (ownerColumn == null || ownerRow == null) continue;
+                int size = clampEmptyBlockSize((Integer) owner.getProperties()
+                        .getOrDefault(EMPTY_BLOCK_SIZE, DEFAULT_EMPTY_BLOCK_SIZE));
+                Node displayStart = owner;
+                if (emptyBlockStartsNextRow(size, ownerColumn)) {
+                    displayStart = grid.getChildren().stream()
+                            .filter(slot -> slot.getProperties().get(EMPTY_BLOCK_OWNER) == owner
+                                    && Integer.valueOf(0).equals(GridPane.getColumnIndex(slot))
+                                    && Integer.valueOf(ownerRow + 17).equals(GridPane.getRowIndex(slot)))
+                            .findFirst().orElse(owner);
                 }
-
-                Label guide = new Label(EMPTY_BLOCK_GUIDE);
+                final Node guideStart = displayStart;
+                int visibleSlots = displayStart == owner
+                        ? Math.max(1, Math.min(size, 41 - ownerColumn)) : size;
+                double guideWidth = Math.max(emptyBlockGuideWidth(grid, guideStart, visibleSlots),
+                        size < 8 ? 112 : 0);
+                String guideText = size == DEFAULT_EMPTY_BLOCK_SIZE
+                        ? EMPTY_BLOCK_GUIDE + " · 41 Plätze"
+                        : size + " Plätze";
+                Label guide = new Label(guideText);
                 guide.setAlignment(Pos.CENTER);
-                guide.setPrefSize(EMPTY_BLOCK_GUIDE_WIDTH, 30);
-                guide.setMouseTransparent(true);
+                guide.setPrefSize(guideWidth, 30);
+                guide.getProperties().put(EMPTY_BLOCK_OWNER, owner);
+                guide.setCursor(Cursor.HAND);
+                guide.setTooltip(new Tooltip("Nur im Editor sichtbar – wird nicht gedruckt.\nGröße: "
+                        + size + " von " + MAX_EMPTY_BLOCK_SIZE
+                        + " Plätzen · Minus/Plus oder Rechtsklick zum Anpassen · Mitte ziehen zum Verschieben"));
+                installEmptyBlockGuideControls(guide, owner);
+                installEmptyBlockGuideHandlers(guide, owner, grid, guideWidth, size);
+                if (selectedEmptyBlocks.contains(owner)) {
+                    guide.setEffect(new DropShadow(8, Color.web("#1976D2")));
+                }
                 guide.setManaged(false);
-                guide.resize(EMPTY_BLOCK_GUIDE_WIDTH, 30);
+                guide.resize(guideWidth, 30);
                 guide.setStyle("-fx-background-color: #E9F3FF; -fx-border-color: #4677A8; "
                         + "-fx-border-style: dashed; -fx-border-radius: 5px; -fx-background-radius: 5px; "
-                        + "-fx-text-fill: #173B61; -fx-font-size: 14px; -fx-font-weight: bold;");
-                guide.layoutXProperty().bind(grid.layoutXProperty());
+                        + "-fx-text-fill: #173B61; -fx-font-size: " + (size == DEFAULT_EMPTY_BLOCK_SIZE ? 14 : 12)
+                        + "px; -fx-font-weight: bold;");
+                guide.layoutXProperty().bind(Bindings.createDoubleBinding(
+                        () -> grid.getLayoutX() + (GridPane.getColumnIndex(guideStart) == 0
+                                ? 0 : guideStart.getBoundsInParent().getMinX()),
+                        grid.layoutXProperty(), guideStart.boundsInParentProperty()));
                 guide.layoutYProperty().bind(Bindings.createDoubleBinding(
-                        () -> grid.getLayoutY() + rowStart.getBoundsInParent().getMinY() + 28,
-                        grid.layoutYProperty(), rowStart.boundsInParentProperty()));
+                        () -> grid.getLayoutY() + guideStart.getBoundsInParent().getMinY() + 28,
+                        grid.layoutYProperty(), guideStart.boundsInParentProperty()));
                 emptyBlockOverlay.getChildren().add(guide);
             }
+        }
+    }
+
+    private void installEmptyBlockGuideControls(Label guide, StackPane owner) {
+        Button smaller = new Button("−");
+        Button larger = new Button("+");
+        for (Button control : List.of(smaller, larger)) {
+            control.setFocusTraversable(false);
+            control.setMinSize(25, 25);
+            control.setPrefSize(25, 25);
+            control.setMaxSize(25, 25);
+            control.setStyle("-fx-padding: 0; -fx-font-size: 16px; -fx-font-weight: bold; "
+                    + "-fx-background-color: #FFFFFF; -fx-border-color: #4677A8; "
+                    + "-fx-background-radius: 4px; -fx-border-radius: 4px;");
+        }
+        int size = emptyBlockSize(owner);
+        smaller.setDisable(size <= MIN_EMPTY_BLOCK_SIZE);
+        larger.setDisable(size >= MAX_EMPTY_BLOCK_SIZE);
+        smaller.setTooltip(new Tooltip("Einen Notenplatz entfernen"));
+        larger.setTooltip(new Tooltip("Einen Notenplatz hinzufügen"));
+        smaller.setOnAction(event -> {
+            changeEmptyBlockSizeFromControl(guide, owner, -1);
+            event.consume();
+        });
+        larger.setOnAction(event -> {
+            changeEmptyBlockSizeFromControl(guide, owner, 1);
+            event.consume();
+        });
+        smaller.setOnMouseClicked(event -> {
+            changeEmptyBlockSizeFromControl(guide, owner, -1);
+            event.consume();
+        });
+        larger.setOnMouseClicked(event -> {
+            changeEmptyBlockSizeFromControl(guide, owner, 1);
+            event.consume();
+        });
+        HBox controls = new HBox(3, smaller, larger);
+        controls.setAlignment(Pos.CENTER);
+        guide.setGraphic(controls);
+        guide.setContentDisplay(ContentDisplay.RIGHT);
+        guide.setGraphicTextGap(8);
+        guide.setOnContextMenuRequested(event -> {
+            selectEmptyBlockForEditing(guide, owner);
+            showEmptyBlockSizeMenu(guide, owner, event.getScreenX(), event.getScreenY());
+            event.consume();
+        });
+    }
+
+    private double emptyBlockGuideWidth(GridPane grid, Node start, int visibleSlots) {
+        Integer startColumn = GridPane.getColumnIndex(start);
+        Integer startRow = GridPane.getRowIndex(start);
+        if (startColumn != null && startRow != null) {
+            Node end = grid.getChildren().stream()
+                    .filter(slot -> Integer.valueOf(startRow).equals(GridPane.getRowIndex(slot))
+                            && Integer.valueOf(startColumn + visibleSlots - 1).equals(GridPane.getColumnIndex(slot)))
+                    .findFirst().orElse(null);
+            if (end != null) {
+                Bounds startBounds = start.getBoundsInParent();
+                Bounds endBounds = end.getBoundsInParent();
+                double width = endBounds.getMaxX() - startBounds.getMinX();
+                if (Double.isFinite(width) && width > 0) {
+                    return width;
+                }
+            }
+        }
+        return visibleSlots * EMPTY_BLOCK_SLOT_PITCH - NOTE_GAP;
+    }
+
+    private double emptyBlockSlotPitch(GridPane grid) {
+        for (Node start : grid.getChildren()) {
+            Integer column = GridPane.getColumnIndex(start);
+            Integer row = GridPane.getRowIndex(start);
+            if (column == null || row == null) continue;
+            Node next = grid.getChildren().stream()
+                    .filter(slot -> Integer.valueOf(row).equals(GridPane.getRowIndex(slot))
+                            && Integer.valueOf(column + 1).equals(GridPane.getColumnIndex(slot)))
+                    .findFirst().orElse(null);
+            if (next == null) continue;
+            double pitch = next.getBoundsInParent().getMinX() - start.getBoundsInParent().getMinX();
+            if (Double.isFinite(pitch) && pitch > 0) return pitch;
+        }
+        return EMPTY_BLOCK_SLOT_PITCH;
+    }
+
+    private int emptyBlockSize(StackPane owner) {
+        Object value = owner.getProperties().get(EMPTY_BLOCK_SIZE);
+        return value instanceof Number number
+                ? clampEmptyBlockSize(number.intValue()) : DEFAULT_EMPTY_BLOCK_SIZE;
+    }
+
+    private void selectEmptyBlockForEditing(Node guide, StackPane owner) {
+        clearAllSelection();
+        addEmptyBlockToSelection(guide);
+    }
+
+    private void showEmptyBlockSizeMenu(Node guide, StackPane owner, double screenX, double screenY) {
+        if (activeContextMenu != null) activeContextMenu.hide();
+        ContextMenu menu = new ContextMenu();
+        registerContextMenuEscape(menu);
+        MenuItem smaller = new MenuItem("Um 1 Platz verkleinern");
+        MenuItem larger = new MenuItem("Um 1 Platz vergrößern");
+        Menu quick = new Menu("Schnellgröße");
+        for (int preset : List.of(1, 10, 20, 30, 41)) {
+            MenuItem item = new MenuItem(preset + " Plätze");
+            item.setOnAction(event -> resizeEmptyBlock(owner, preset));
+            quick.getItems().add(item);
+        }
+        MenuItem custom = new MenuItem("Größe festlegen …");
+        custom.setOnAction(event -> {
+            TextInputDialog dialog = new TextInputDialog(String.valueOf(emptyBlockSize(owner)));
+            dialog.setTitle("Leerblockgröße");
+            dialog.setHeaderText("Wie viele Notenplätze soll der Leerblock freilassen?");
+            dialog.setContentText("Plätze (1–41):");
+            dialog.showAndWait().ifPresent(value -> {
+                try {
+                    int requested = Integer.parseInt(value.trim());
+                    if (requested >= MIN_EMPTY_BLOCK_SIZE && requested <= MAX_EMPTY_BLOCK_SIZE) {
+                        resizeEmptyBlock(owner, requested);
+                    } else {
+                        keyboardStatus.setText("Die Leerblockgröße muss zwischen 1 und 41 liegen.");
+                    }
+                } catch (NumberFormatException ignored) {
+                    keyboardStatus.setText("Bitte eine ganze Zahl zwischen 1 und 41 eingeben.");
+                }
+            });
+        });
+        smaller.setOnAction(event -> resizeEmptyBlock(owner, emptyBlockSize(owner) - 1));
+        larger.setOnAction(event -> resizeEmptyBlock(owner, emptyBlockSize(owner) + 1));
+        menu.getItems().addAll(smaller, larger, new SeparatorMenuItem(), quick, custom);
+        activeContextMenu = menu;
+        menu.setOnHidden(event -> activeContextMenu = null);
+        menu.show(guide, screenX, screenY);
+    }
+
+    private void installEmptyBlockGuideHandlers(Label guide, StackPane owner, GridPane grid,
+                                                double guideWidth, int size) {
+        guide.setOnMousePressed(event -> {
+            if (event.getButton() != MouseButton.PRIMARY) return;
+            emptyBlockDragOwner = owner;
+            emptyBlockDragStartX = event.getSceneX();
+            emptyBlockDragStartY = event.getSceneY();
+            emptyBlockDragStartPageX = pageCanvas.sceneToLocal(event.getSceneX(), event.getSceneY()).getX();
+            emptyBlockDragStartSize = size;
+            emptyBlockDragMoved = false;
+            emptyBlockDragWasSelected = selectedEmptyBlocks.contains(owner);
+            double edge = Math.min(16, Math.max(7, guideWidth / 4));
+            emptyBlockResizeLeft = event.getX() <= edge;
+            emptyBlockResizeRight = event.getX() >= guideWidth - edge;
+            if (emptyBlockResizeLeft || emptyBlockResizeRight) {
+                clearAllSelection();
+                guide.setCursor(emptyBlockResizeLeft ? Cursor.W_RESIZE : Cursor.E_RESIZE);
+            } else {
+                clearAllSelection();
+                setSelectedNotes(List.of(owner));
+                guide.setCursor(Cursor.MOVE);
+            }
+        });
+        guide.setOnMouseDragged(event -> {
+            if (emptyBlockDragOwner != owner || !event.isPrimaryButtonDown()) return;
+            if (Math.hypot(event.getSceneX() - emptyBlockDragStartX,
+                    event.getSceneY() - emptyBlockDragStartY) > 5) {
+                emptyBlockDragMoved = true;
+            }
+            event.consume();
+        });
+        guide.setOnMouseReleased(event -> {
+            if (emptyBlockDragOwner != owner || event.getButton() != MouseButton.PRIMARY) return;
+            if (emptyBlockDragMoved) {
+                if (emptyBlockResizeLeft || emptyBlockResizeRight) {
+                    double currentPageX = pageCanvas.sceneToLocal(event.getSceneX(), event.getSceneY()).getX();
+                    double slotPitch = emptyBlockSlotPitch(grid);
+                    int delta = (int) Math.round((currentPageX - emptyBlockDragStartPageX)
+                            / slotPitch);
+                    int newSize = emptyBlockResizeRight
+                            ? emptyBlockDragStartSize + delta
+                            : emptyBlockDragStartSize - delta;
+                    resizeEmptyBlock(owner, newSize);
+                } else {
+                    clearAllSelection();
+                    setSelectedNotes(List.of(owner));
+                    moveElementsTo(grid, List.of(new NoteSlot(GridPane.getColumnIndex(owner),
+                            GridPane.getRowIndex(owner))), event.getSceneX(), event.getSceneY());
+                }
+                event.consume();
+            }
+            guide.setCursor(Cursor.HAND);
+            emptyBlockDragOwner = null;
+        });
+        guide.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && !emptyBlockDragMoved) {
+                if (handleEmptyBlockControlClick(guide, owner, event)) {
+                    event.consume();
+                    return;
+                }
+                boolean wasSelected = emptyBlockDragWasSelected || selectedEmptyBlocks.contains(owner);
+                clearAllSelection();
+                if (!wasSelected) addEmptyBlockToSelection(guide);
+                event.consume();
+            }
+        });
+    }
+
+    private boolean handleEmptyBlockControlClick(Label guide, StackPane owner, MouseEvent event) {
+        if (Boolean.TRUE.equals(guide.getProperties().remove(EMPTY_BLOCK_CONTROL_ACTION))) {
+            return true;
+        }
+        if (!(guide.getGraphic() instanceof HBox controls) || controls.getChildren().size() < 2) {
+            return false;
+        }
+        Button smaller = (Button) controls.getChildren().get(0);
+        Button larger = (Button) controls.getChildren().get(1);
+        Node target = event.getTarget() instanceof Node node ? node : null;
+        while (target != null) {
+            if (target == smaller) {
+                changeEmptyBlockSizeFromControl(guide, owner, -1);
+                return true;
+            }
+            if (target == larger) {
+                changeEmptyBlockSizeFromControl(guide, owner, 1);
+                return true;
+            }
+            target = target.getParent();
+        }
+        Point2D point = guide.sceneToLocal(event.getSceneX(), event.getSceneY());
+        Bounds controlBounds = controls.getBoundsInParent();
+        if (!controlBounds.contains(point.getX(), point.getY())) {
+            return false;
+        }
+        double midpoint = controlBounds.getMinX() + controlBounds.getWidth() / 2.0;
+        changeEmptyBlockSizeFromControl(guide, owner, point.getX() < midpoint ? -1 : 1);
+        return true;
+    }
+
+    private void changeEmptyBlockSizeFromControl(Label guide, StackPane owner, int delta) {
+        if (Boolean.TRUE.equals(guide.getProperties().putIfAbsent(EMPTY_BLOCK_CONTROL_ACTION, Boolean.TRUE))) {
+            return;
+        }
+        resizeEmptyBlock(owner, emptyBlockSize(owner) + delta);
+        Platform.runLater(() -> guide.getProperties().remove(EMPTY_BLOCK_CONTROL_ACTION));
+    }
+
+    private void resizeEmptyBlock(StackPane owner, int requestedSize) {
+        GridPane grid = findNoteGrid(owner);
+        Integer column = GridPane.getColumnIndex(owner);
+        Integer row = GridPane.getRowIndex(owner);
+        if (grid == null || column == null || row == null) return;
+        int newSize = clampEmptyBlockSize(requestedSize);
+        List<SerializedGridToken> previous = collectGridTokens(grid);
+        int index = -1;
+        for (int i = 0; i < previous.size(); i++) {
+            SerializedGridToken token = previous.get(i);
+            if (isEmptyBlockToken(token.token()) && token.column() == column && token.row() == row) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0 || emptyBlockSize(previous.get(index).token()) == newSize) return;
+        List<SlurMovePlan> slurs = captureSlurMovePlans(grid, previous);
+        List<SerializedGridToken> replacement = new ArrayList<>(previous);
+        replacement.set(index, new SerializedGridToken(emptyBlockToken(newSize), column, row, false));
+        if (!canFitGridTokens(replacement)) {
+            keyboardStatus.setText("Der Leerblock passt in dieser Größe nicht mehr auf die Seite.");
+            return;
+        }
+        markDocumentDirty();
+        List<Integer> noteIdentities = replacement.stream()
+                .filter(token -> !token.pause() && isNoteToken(token.token()))
+                .map(token -> noteIndexForSlot(previous, token.column(), token.row()))
+                .toList();
+        rebuildGridCompact(grid, replacement);
+        restoreMovedSlurs(grid, slurs, noteIdentities);
+        clearAllSelection();
+    }
+
+    private void addEmptyBlockToSelection(Node guide) {
+        if (guide.getProperties().get(EMPTY_BLOCK_OWNER) instanceof StackPane owner) {
+            selectedEmptyBlocks.add(owner);
+            guide.setEffect(new DropShadow(8, Color.web("#1976D2")));
         }
     }
 
@@ -2861,13 +3240,18 @@ public class Controller {
     }
 
     private void deleteSelectedNotesAndCompact() {
-        if (selectedNoteContainers.isEmpty() && selectedPauseMarkers.isEmpty()) {
+        if (selectedNoteContainers.isEmpty() && selectedPauseMarkers.isEmpty() && selectedEmptyBlocks.isEmpty()) {
             return;
         }
 
         markDocumentDirty();
 
-        Set<StackPane> selected = Set.copyOf(selectedNoteContainers);
+        Set<StackPane> selectedEmptyOwners = new LinkedHashSet<>(selectedEmptyBlocks);
+        selectedEmptyOwners.addAll(selectedNoteContainers.stream()
+                .filter(owner -> EMPTY_BLOCK.equals(owner.getUserData()))
+                .toList());
+        Set<StackPane> selected = new LinkedHashSet<>(selectedNoteContainers);
+        selected.addAll(selectedEmptyOwners);
         Set<PauseMarker> selectedPauses = Set.copyOf(selectedPauseMarkers);
         for (PauseMarker marker : selectedPauses) {
             removePauseMarker(marker);
@@ -2882,21 +3266,71 @@ public class Controller {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
 
         for (GridPane grid : affectedGrids) {
-            Set<NoteSlot> selectedSlots = selected.stream()
-                    .filter(note -> findNoteGrid(note) == grid)
-                    .map(note -> new NoteSlot(GridPane.getColumnIndex(note), GridPane.getRowIndex(note)))
-                    .collect(java.util.stream.Collectors.toSet());
-            List<SerializedGridToken> remainingTokens = collectGridTokens(grid).stream()
-                    .filter(token -> token.pause() || !isSelectableToken(token.token()) ||
+            Set<NoteSlot> selectedSlots = new LinkedHashSet<>();
+            for (StackPane selectedNode : selected) {
+                if (findNoteGrid(selectedNode) == grid) {
+                    selectedSlots.add(new NoteSlot(GridPane.getColumnIndex(selectedNode),
+                            GridPane.getRowIndex(selectedNode)));
+                }
+            }
+            for (Node node : grid.getChildren()) {
+                if (node instanceof StackPane slot
+                        && slot.getProperties().get(EMPTY_BLOCK_OWNER) instanceof StackPane owner
+                        && selectedEmptyOwners.contains(owner)) {
+                    selectedSlots.add(new NoteSlot(GridPane.getColumnIndex(slot),
+                            GridPane.getRowIndex(slot)));
+                }
+            }
+            List<SerializedGridToken> previousTokens = collectGridTokens(grid);
+            List<SlurMovePlan> slurs = captureSlurMovePlans(grid, previousTokens);
+            List<SerializedGridToken> remainingTokens = previousTokens.stream()
+                    .filter(token -> token.pause()
+                            || (!isSelectableToken(token.token()) && !EMPTY_BLOCK.equals(token.token())) ||
                             !selectedSlots.contains(new NoteSlot(token.column(), token.row())))
                     .toList();
+            List<Integer> remainingNoteIdentities = remainingTokens.stream()
+                    .filter(token -> !token.pause() && isNoteToken(token.token()))
+                    .map(token -> noteIndexForSlot(previousTokens, token.column(), token.row()))
+                    .toList();
             rebuildGridCompact(grid, remainingTokens);
+            restoreMovedSlurs(grid, slurs, remainingNoteIdentities);
         }
         clearAllSelection();
     }
 
     private boolean isNoteToken(String token) {
-        return token != null && token.contains("|") && !token.startsWith("WIEDERHOLUNG|");
+        return token != null && token.contains("|") && !token.startsWith("WIEDERHOLUNG|")
+                && !isEmptyBlockToken(token);
+    }
+
+    private boolean isEmptyBlockToken(String token) {
+        return token != null && (EMPTY_BLOCK.equals(token) || token.startsWith(EMPTY_BLOCK + "|"));
+    }
+
+    private int emptyBlockSize(String token) {
+        if (!isEmptyBlockToken(token)) return 0;
+        int separator = token.indexOf('|');
+        if (separator < 0) return DEFAULT_EMPTY_BLOCK_SIZE;
+        String encodedSize = token.substring(separator + 1);
+        if (!encodedSize.startsWith("SIZE|")) {
+            // `LEERBLOCK|<alte Länge>` ist das bisherige Dateiformat und
+            // bezeichnet weiterhin einen vollständigen Standardblock.
+            return DEFAULT_EMPTY_BLOCK_SIZE;
+        }
+        try {
+            return clampEmptyBlockSize(Integer.parseInt(encodedSize.substring("SIZE|".length())));
+        } catch (NumberFormatException ignored) {
+            return DEFAULT_EMPTY_BLOCK_SIZE;
+        }
+    }
+
+    private int clampEmptyBlockSize(int size) {
+        return Math.max(MIN_EMPTY_BLOCK_SIZE, Math.min(MAX_EMPTY_BLOCK_SIZE, size));
+    }
+
+    private String emptyBlockToken(int size) {
+        int clamped = clampEmptyBlockSize(size);
+        return clamped == DEFAULT_EMPTY_BLOCK_SIZE ? EMPTY_BLOCK : EMPTY_BLOCK + "|SIZE|" + clamped;
     }
 
     private boolean isRepeatToken(String token) {
@@ -2904,7 +3338,7 @@ public class Controller {
     }
 
     private boolean isMovableToken(String token) {
-        return isNoteToken(token) || isRepeatToken(token);
+        return isNoteToken(token) || isRepeatToken(token) || isEmptyBlockToken(token);
     }
 
     private boolean isSelectableToken(String token) {
@@ -2921,6 +3355,10 @@ public class Controller {
             Integer column = GridPane.getColumnIndex(node);
             Integer row = GridPane.getRowIndex(node);
             if (token != null && column != null && row != null) {
+                if (EMPTY_BLOCK.equals(token) && node instanceof StackPane owner) {
+                    token = emptyBlockToken((Integer) owner.getProperties()
+                            .getOrDefault(EMPTY_BLOCK_SIZE, DEFAULT_EMPTY_BLOCK_SIZE));
+                }
                 tokens.add(new SerializedGridToken(token, column, row, false));
             }
         }
@@ -3582,9 +4020,13 @@ public class Controller {
     private WritableImage snapshotPageForPrint() {
         boolean guidesWereVisible = emptyBlockOverlay.isVisible();
         boolean indicatorWasVisible = activePageIndicator != null && activePageIndicator.isVisible();
+        boolean microphoneOverlayWasVisible = microphoneOverlay != null && microphoneOverlay.isVisible();
         emptyBlockOverlay.setVisible(false);
         if (activePageIndicator != null) {
             activePageIndicator.setVisible(false);
+        }
+        if (microphoneOverlay != null) {
+            microphoneOverlay.setVisible(false);
         }
         try {
             pageCanvas.applyCss();
@@ -3594,6 +4036,9 @@ public class Controller {
             emptyBlockOverlay.setVisible(guidesWereVisible);
             if (activePageIndicator != null) {
                 activePageIndicator.setVisible(indicatorWasVisible);
+            }
+            if (microphoneOverlay != null) {
+                microphoneOverlay.setVisible(microphoneOverlayWasVisible);
             }
         }
     }
@@ -3654,6 +4099,10 @@ public class Controller {
             Integer column = GridPane.getColumnIndex(node);
             Integer row = GridPane.getRowIndex(node);
             if (token != null && column != null && row != null) {
+                if (EMPTY_BLOCK.equals(token) && node instanceof StackPane owner) {
+                    token = emptyBlockToken((Integer) owner.getProperties()
+                            .getOrDefault(EMPTY_BLOCK_SIZE, DEFAULT_EMPTY_BLOCK_SIZE));
+                }
                 tokens.add(new SerializedGridToken(token, column, row, false));
             }
         }
@@ -3670,7 +4119,8 @@ public class Controller {
                 // Laden muss der Pausenstrich deshalb zuerst wiederkommen.
                 .thenComparingInt(token -> token.pause() ? 0 : 1));
         for (SerializedGridToken token : tokens) {
-            writer.write(page + ";" + token.token());
+            writer.write(page + ";" + (isEmptyBlockToken(token.token())
+                    ? emptyBlockToken(emptyBlockSize(token.token())) : token.token()));
             writer.newLine();
         }
     }
@@ -3813,10 +4263,8 @@ public class Controller {
     }
 
     private boolean restoreSpecialToken(String token) {
-        if (EMPTY_BLOCK.equals(token) || token.startsWith(EMPTY_BLOCK + "|")) {
-            // Dateien mit kürzlich gespeicherter variabler Länge werden wieder
-            // als der ursprüngliche feste Leerblock geladen.
-            addEmptyBlock();
+        if (isEmptyBlockToken(token)) {
+            addEmptyBlock(emptyBlockSize(token));
             return true;
         }
         if ("PAUSENSTRICH".equals(token)) {

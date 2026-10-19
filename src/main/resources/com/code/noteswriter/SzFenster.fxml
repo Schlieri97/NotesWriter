@@ -59,7 +59,7 @@
                                    style="-fx-background-color: transparent; -fx-border-color: transparent; -fx-font-size: 22px; -fx-font-weight: bold;" />
                         <GridPane fx:id="Gridpane1" layoutX="24.0" layoutY="110.0" vgap="3"/>
                         <GridPane fx:id="Gridpane2" layoutX="655.0" layoutY="110.0" vgap="3"/>
-                        <Pane fx:id="emptyBlockOverlay" mouseTransparent="true"
+                        <Pane fx:id="emptyBlockOverlay" pickOnBounds="false"
                               minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                               minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
                         <Pane fx:id="pauseOverlay" pickOnBounds="false"
@@ -68,6 +68,17 @@
                         <Pane fx:id="annotationOverlay" pickOnBounds="false"
                               minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                               minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
+                        <HBox fx:id="microphoneOverlay" alignment="CENTER" spacing="5.0"
+                              StackPane.alignment="TOP_CENTER" translateX="36.0" translateY="12.0"
+                              pickOnBounds="false" mouseTransparent="true" visible="false"
+                              style="-fx-padding: 3 8 3 5; -fx-background-color: rgba(255,255,255,0.92); -fx-border-color: #D32F2F; -fx-border-width: 1; -fx-background-radius: 12; -fx-border-radius: 12;">
+                            <Button fx:id="microphoneOverlayButton" text="●" mouseTransparent="true" focusTraversable="false"
+                                    minWidth="18.0" prefWidth="18.0" maxWidth="18.0"
+                                    minHeight="18.0" prefHeight="18.0" maxHeight="18.0"
+                                    style="-fx-padding: 0; -fx-background-color: #D32F2F; -fx-background-radius: 50; -fx-text-fill: white; -fx-font-size: 9px; -fx-font-weight: bold; -fx-opacity: 1.0;" />
+                            <Label text="Mikrofon ist an"
+                                   style="-fx-text-fill: #B71C1C; -fx-font-size: 12px; -fx-font-weight: bold;" />
+                        </HBox>
                         <Rectangle fx:id="activePageIndicator"
                                    x="10.0" y="10.0" width="630.0" height="890.0"
                                    arcWidth="10.0" arcHeight="10.0"
@@ -165,7 +176,7 @@
                     </FlowPane>
                     <Button fx:id="emptyBlockButton" text="Leerer Notenblock"
                             onAction="#handleEmptyBlockAction" />
-                    <Label text="Schließt den aktuellen Block ab und lässt eine ganze Zeile frei – auch als letzte Zeile der Seite."
+                    <Label text="Fügt 41 freie Notenplätze ein. Am Leerblock mit −/+ oder per Rechtsklick anpassen. Die Markierung ist nur im Editor sichtbar und wird nicht gedruckt."
                            wrapText="true" style="-fx-font-size: 12px; -fx-text-fill: #607D8B;" />
                     <Separator />
                     <HBox spacing="8.0">

@@ -9,6 +9,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.TextField;
@@ -20,6 +21,7 @@ import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.PickResult;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.shape.Line;
@@ -110,6 +112,24 @@ class KeyboardAndExportTest {
             controller.acceptMicrophoneReading(new MicrophoneInput.Reading(1661.219, 81, true));
             controller.acceptMicrophoneReading(new MicrophoneInput.Reading(3322.438, 93, true));
             assertEquals(List.of("A|OKTAV", "A|NORMAL", "A1|NORMAL"), tokens(controller.Gridpane1));
+        });
+    }
+
+    @Test
+    void microphoneOverlayShowsActiveStateAndIsHiddenAgainWhenStopped() throws Exception {
+        onFx(() -> {
+            HBox overlay = (HBox) root.lookup("#microphoneOverlay");
+            Button indicator = (Button) root.lookup("#microphoneOverlayButton");
+            assertFalse(overlay.isVisible());
+
+            call("setMicrophoneControls", true);
+            assertTrue(overlay.isVisible());
+            assertEquals("Mikrofon ist an", indicator.getAccessibleText());
+            assertTrue(((Label) overlay.lookup(".label")).getText().contains("Mikrofon ist an"));
+
+            call("setMicrophoneControls", false);
+            assertFalse(overlay.isVisible());
+            assertEquals("Mikrofon ist aus", indicator.getAccessibleText());
         });
     }
 
@@ -623,6 +643,259 @@ class KeyboardAndExportTest {
     }
 
     @Test
+    void clickedBlankBlocksCanBeDeletedBetweenNotesOnEitherPageAndRestored() throws Exception {
+        onFx(() -> {
+            Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
+            for (KeyCode key : List.of(KeyCode.BACK_SPACE, KeyCode.DELETE)) {
+                for (GridPane grid : List.of(controller.Gridpane1, controller.Gridpane2)) {
+                    call("clearAllPagesBeforeOverwrite");
+                    call("selectPage", grid);
+                    tap(KeyCode.D);
+                    for (int i = 0; i < 3; i++) tap(KeyCode.ENTER);
+                    tap(KeyCode.E);
+                    GridPane otherGrid = grid == controller.Gridpane1 ? controller.Gridpane2 : controller.Gridpane1;
+                    call("selectPage", otherGrid);
+                    tap(KeyCode.F);
+
+                    Node middleGuide = guides.getChildren().get(1);
+                    assertFalse(middleGuide.isMouseTransparent());
+                    mouseClick(middleGuide);
+                    assertNotNull(middleGuide.getEffect());
+                    tap(key);
+                    assertEquals(List.of("D|NORMAL", "LEERBLOCK", "LEERBLOCK", "E|NORMAL"), tokens(grid));
+                    assertPosition(slot(grid, "E|NORMAL"), 0, 52);
+                    assertEquals(List.of("F|NORMAL"), tokens(otherGrid));
+                    assertEquals(2, guides.getChildren().size());
+
+                    tap(KeyCode.Z, false, true, false);
+                    assertEquals(List.of("D|NORMAL", "LEERBLOCK", "LEERBLOCK", "LEERBLOCK", "E|NORMAL"), tokens(grid));
+                    assertPosition(slot(grid, "E|NORMAL"), 0, 69);
+                    tap(KeyCode.Z, true, true, false);
+                    assertEquals(2, guides.getChildren().size());
+
+                    mouseClick(guides.getChildren().get(0));
+                    tap(key);
+                    mouseClick(guides.getChildren().get(0));
+                    tap(key);
+                    assertEquals(List.of("D|NORMAL", "E|NORMAL"), tokens(grid));
+                    assertPosition(slot(grid, "E|NORMAL"), 1, 1);
+                    assertEquals(List.of("F|NORMAL"), tokens(otherGrid));
+                    assertTrue(guides.getChildren().isEmpty());
+                    call("selectPage", grid);
+                    tap(KeyCode.G);
+                    assertPosition(slot(grid, "G|NORMAL"), 2, 1);
+                }
+            }
+        });
+    }
+
+    @Test
+    void selectionRectangleCanDeleteTwoOrThreeBlankBlocksTogether() throws Exception {
+        onFx(() -> {
+            Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
+            Pane page = (Pane) root.lookup("#pageCanvas");
+            for (int count : List.of(2, 3)) {
+                call("clearAllPagesBeforeOverwrite");
+                call("selectPage", controller.Gridpane1);
+                for (int i = 0; i < count; i++) tap(KeyCode.ENTER);
+                tap(KeyCode.E);
+                root.layout();
+                Node firstGuide = guides.getChildren().get(0);
+                Node lastGuide = guides.getChildren().get(count - 1);
+                Bounds first = page.sceneToLocal(firstGuide.localToScene(firstGuide.getBoundsInLocal()));
+                Bounds last = page.sceneToLocal(lastGuide.localToScene(lastGuide.getBoundsInLocal()));
+                call("selectNotesInRectangle", new BoundingBox(first.getMinX() - 1, first.getMinY() - 1,
+                        first.getWidth() + 2, last.getMaxY() - first.getMinY() + 2));
+                assertTrue(guides.getChildren().stream().allMatch(guide -> guide.getEffect() != null));
+                tap(count == 2 ? KeyCode.BACK_SPACE : KeyCode.DELETE);
+                assertEquals(List.of("E|NORMAL"), tokens(controller.Gridpane1));
+                assertPosition(slot(controller.Gridpane1, "E|NORMAL"), 0, 1);
+                assertTrue(guides.getChildren().isEmpty());
+                tap(KeyCode.Z, false, true, false);
+                assertEquals(count, guides.getChildren().size());
+                assertPosition(slot(controller.Gridpane1, "E|NORMAL"), 0, 1 + count * 17);
+            }
+        });
+    }
+
+    @Test
+    void blankBlockSelectionCanBeClearedOrReplacedByANoteSelection() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.ENTER);
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
+            Node guide = guides.getChildren().get(0);
+            mouseClick(guide);
+            mouseClick(guide);
+            assertNull(guide.getEffect());
+            mouseClick(guide);
+            tap(KeyCode.ESCAPE);
+            assertNull(guide.getEffect());
+            mouseClick(guide);
+            mouseClick(root);
+            assertNull(guide.getEffect());
+            mouseClick(guide);
+            mouseClick(slot(controller.Gridpane1, "D|NORMAL"));
+            assertNull(guide.getEffect());
+            tap(KeyCode.DELETE);
+            assertEquals(List.of("LEERBLOCK", "E|NORMAL"), tokens(controller.Gridpane1));
+        });
+    }
+
+    @Test
+    void deletingBlankBlockKeepsFollowingNotesPausesRepeatMarkersAndSlurs() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.ENTER);
+            call("appendSerializedToken", "PAUSENSTRICH");
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            call("appendSerializedToken", "WIEDERHOLUNG|EINZELSTRICH");
+            call("setSelectedNotes", List.of(slot(controller.Gridpane1, "D|NORMAL"),
+                    slot(controller.Gridpane1, "E|NORMAL")));
+            call("handleAddSlurAction", (Object) null);
+
+            Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
+            mouseClick(guides.getChildren().get(0));
+            tap(KeyCode.DELETE);
+
+            assertEquals(List.of("D|NORMAL", "E|NORMAL", "WIEDERHOLUNG|EINZELSTRICH"), tokens(controller.Gridpane1));
+            assertEquals(1, ((Pane) root.lookup("#pauseOverlay")).getChildren().size());
+            assertEquals(1, ((Pane) root.lookup("#annotationOverlay")).getChildren().stream()
+                    .filter(Path.class::isInstance).count());
+            StringWriter data = new StringWriter();
+            BufferedWriter writer = new BufferedWriter(data);
+            call("writeGridTokens", writer, "Seite1", controller.Gridpane1);
+            call("writeAnnotations", writer, "Seite1", controller.Gridpane1);
+            writer.flush();
+            assertEquals(List.of("Seite1;PAUSENSTRICH", "Seite1;D|NORMAL", "Seite1;E|NORMAL",
+                    "Seite1;WIEDERHOLUNG|EINZELSTRICH", "Seite1;BOGEN|0,1;1,1"), data.toString().lines().toList());
+        });
+    }
+
+    @Test
+    void blankBlockDefaultsTo41SlotsCanBeResizedAndKeepsSizeWhenSavedAndLoaded() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.ENTER);
+            Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
+            Node guide = guides.getChildren().get(0);
+            StackPane owner = (StackPane) guide.getProperties().get("emptyBlockOwner");
+            assertEquals(41, controller.Gridpane1.getChildren().stream()
+                    .filter(node -> node instanceof StackPane
+                            && node.getProperties().get("emptyBlockOwner") == owner).count());
+
+            call("resizeEmptyBlock", owner, 7);
+            tap(KeyCode.D);
+            assertPosition(slot(controller.Gridpane1, "D|NORMAL"), 7, 1);
+            StringWriter data = new StringWriter();
+            BufferedWriter writer = new BufferedWriter(data);
+            call("writeGridTokens", writer, "Seite1", controller.Gridpane1);
+            writer.flush();
+            assertTrue(data.toString().lines().anyMatch(line -> line.equals("Seite1;LEERBLOCK|SIZE|7")));
+
+            call("clearAllPagesBeforeOverwrite");
+            call("appendSerializedToken", "LEERBLOCK|SIZE|7");
+            tap(KeyCode.E);
+            assertPosition(slot(controller.Gridpane1, "E|NORMAL"), 7, 1);
+        });
+    }
+
+    @Test
+    void blankBlockCanBeMovedAsAWholeElementAndSnapsBeforeANote() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            controller.emptyBlockButton.fire();
+            StackPane owner = (StackPane) ((Pane) root.lookup("#emptyBlockOverlay")).getChildren().get(0)
+                    .getProperties().get("emptyBlockOwner");
+            StackPane firstNote = slot(controller.Gridpane1, "D|NORMAL");
+            Bounds target = firstNote.localToScene(firstNote.getBoundsInLocal());
+            assertTrue((Boolean) call("moveNoteTo", controller.Gridpane1,
+                    GridPane.getColumnIndex(owner), GridPane.getRowIndex(owner),
+                    target.getMinX() - 10, target.getMinY() + target.getHeight() / 2));
+            assertEquals(List.of("LEERBLOCK", "D|NORMAL", "E|NORMAL"), tokens(controller.Gridpane1));
+            tap(KeyCode.DELETE);
+            assertEquals(List.of("D|NORMAL", "E|NORMAL"), tokens(controller.Gridpane1));
+        });
+    }
+
+    @Test
+    void resizedBlankBlockKeepsItsGuideWidthWhenItCrossesARow() throws Exception {
+        onFx(() -> {
+            for (int i = 0; i < 12; i++) tap(KeyCode.D);
+            controller.emptyBlockButton.fire();
+            controller.emptyBlockButton.fire();
+            Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
+            StackPane owner = (StackPane) guides.getChildren().get(0).getProperties().get("emptyBlockOwner");
+            call("resizeEmptyBlock", owner, 40);
+            guides = (Pane) root.lookup("#emptyBlockOverlay");
+            Label resizedGuide = (Label) guides.getChildren().stream()
+                    .filter(node -> ((Label) node).getText().equals("40 Plätze"))
+                    .findFirst().orElseThrow();
+            StackPane resizedOwner = (StackPane) resizedGuide.getProperties().get("emptyBlockOwner");
+            assertEquals(40, resizedOwner.getProperties().get("emptyBlockSize"));
+            assertTrue(resizedGuide.getWidth() > 500,
+                    "the guide must show the complete 40-place block, not only the first row remainder");
+            double width40 = resizedGuide.getWidth();
+            call("resizeEmptyBlock", resizedOwner, 39);
+            Label smallerGuide = (Label) ((Pane) root.lookup("#emptyBlockOverlay")).getChildren().stream()
+                    .filter(node -> ((Label) node).getText().equals("39 Plätze"))
+                    .findFirst().orElseThrow();
+            assertTrue(smallerGuide.getWidth() < width40,
+                    "the guide must shrink when the block is reduced further");
+        });
+    }
+
+    @Test
+    void emptyBlockGuidesUseActualGridWidthAfterFollowingNotes() throws Exception {
+        onFx(() -> {
+            controller.emptyBlockButton.fire();
+            controller.emptyBlockButton.fire();
+            controller.emptyBlockButton.fire();
+            Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
+            Label second = (Label) guides.getChildren().get(1);
+            StackPane secondOwner = (StackPane) second.getProperties().get("emptyBlockOwner");
+            call("resizeEmptyBlock", secondOwner, 37);
+            guides = (Pane) root.lookup("#emptyBlockOverlay");
+            Label third = (Label) guides.getChildren().get(2);
+            StackPane thirdOwner = (StackPane) third.getProperties().get("emptyBlockOwner");
+            call("resizeEmptyBlock", thirdOwner, 38);
+            tap(KeyCode.D);
+            guides = (Pane) root.lookup("#emptyBlockOverlay");
+            Label firstGuide = (Label) guides.getChildren().get(0);
+            Label secondGuide = (Label) guides.getChildren().get(1);
+            Label thirdGuide = (Label) guides.getChildren().get(2);
+            assertEquals(609.0, firstGuide.getWidth(), 0.01);
+            assertEquals(549.0, secondGuide.getWidth(), 0.01);
+            assertEquals(564.0, thirdGuide.getWidth(), 0.01);
+            assertPosition(slot(controller.Gridpane1, "D|NORMAL"), 38, 35);
+        });
+    }
+
+    @Test
+    void emptyBlockPlusAndMinusButtonsChangeSize() throws Exception {
+        onFx(() -> {
+            controller.emptyBlockButton.fire();
+            Label guide = (Label) ((Pane) root.lookup("#emptyBlockOverlay")).getChildren().get(0);
+            StackPane owner = (StackPane) guide.getProperties().get("emptyBlockOwner");
+            call("resizeEmptyBlock", owner, 40);
+            guide = (Label) ((Pane) root.lookup("#emptyBlockOverlay")).getChildren().get(0);
+            HBox controls = (HBox) guide.getGraphic();
+            Button plus = (Button) controls.getChildren().get(1);
+            mouseClick(plus);
+            Label after = (Label) ((Pane) root.lookup("#emptyBlockOverlay")).getChildren().get(0);
+            assertEquals(41, ((StackPane) after.getProperties().get("emptyBlockOwner"))
+                    .getProperties().get("emptyBlockSize"));
+            assertTrue(after.getTooltip().getText().contains("nicht gedruckt"));
+            Button minus = (Button) ((HBox) after.getGraphic()).getChildren().get(0);
+            mouseClick(minus);
+            after = (Label) ((Pane) root.lookup("#emptyBlockOverlay")).getChildren().get(0);
+            assertEquals(40, ((StackPane) after.getProperties().get("emptyBlockOwner"))
+                    .getProperties().get("emptyBlockSize"));
+        });
+    }
+
+    @Test
     void printOptionsPreserveBlankBlocksAndDoNotChangeTheDocument() throws Exception {
         onFx(() -> {
             tap(KeyCode.D);
@@ -672,7 +945,9 @@ class KeyboardAndExportTest {
         onFx(() -> {
             assertNull(root.lookup("#deleteLastNoteButton"));
             assertNull(root.lookup("#deleteAllNotesButton"));
-            assertTrue(((Pane) root.lookup("#emptyBlockOverlay")).isMouseTransparent());
+            Pane guides = (Pane) root.lookup("#emptyBlockOverlay");
+            assertFalse(guides.isMouseTransparent());
+            assertFalse(guides.isPickOnBounds());
             tap(KeyCode.D);
             tap(KeyCode.BACK_SPACE);
             assertTrue(tokens(controller.Gridpane1).isEmpty());
@@ -1167,6 +1442,7 @@ class KeyboardAndExportTest {
                     false, false, true, new PickResult(target, 1, 1)));
         }
     }
+
 
     private void tap(KeyCode code, boolean shift, boolean control, boolean alt) {
         key(root, KeyEvent.KEY_PRESSED, code, shift, control, alt);
