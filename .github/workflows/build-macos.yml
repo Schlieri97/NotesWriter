@@ -1,0 +1,61 @@
+name: Mac-App bauen
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'codex/macos-build'
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            java-arch: aarch64
+          - runner: macos-15-intel
+            arch: x86_64
+            java-arch: x64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '22.0.2'
+          architecture: ${{ matrix.java-arch }}
+          cache: maven
+      - name: Tests, Laufzeit und DMG erstellen
+        run: bash scripts/build-macos.sh
+      - name: Mac-Paket zum Download bereitstellen
+        uses: actions/upload-artifact@v7
+        with:
+          name: SZ-Notenschreiber-macOS-${{ matrix.arch }}
+          path: |
+            dist/macos/*.dmg
+            dist/macos/*.sha256
+            docs/MACOS.md
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Testberichte und Startprotokoll sichern
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macOS-Testberichte-${{ matrix.arch }}
+          path: |
+            target/surefire-reports/
+            target/macos-startup.log
+          if-no-files-found: ignore
+          retention-days: 14

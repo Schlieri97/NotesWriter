@@ -43,8 +43,9 @@ Der Kammerton ist auf A = 440 Hz eingestellt und kann vor dem Start zwischen
 430 und 450 Hz geändert werden. Bei Störgeräuschen den Empfindlichkeitsregler
 nach rechts bewegen; bei leisen, nicht erkannten Tönen nach links. Einstellungen
 können bei gestopptem Mikrofon geändert werden. Ist kein Zugriff möglich, in den
-Windows-Datenschutzeinstellungen den Mikrofonzugriff für Desktop-Apps erlauben
-und das gewählte Eingabegerät prüfen.
+Windows-Datenschutzeinstellungen den Mikrofonzugriff für Desktop-Apps erlauben;
+auf macOS unter **Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon**
+die App freigeben. Außerdem das gewählte Eingabegerät prüfen.
 
 Nach Instrument- und Grifflagenkorrektur gilt intern: Die gemessenen
 Ces-Referenzen für F_Oktav, Fis/Ges_Oktav, G_Oktav, F, Fis/Ges, F1 und G1 liegen bei
@@ -104,11 +105,16 @@ gewählt, da sich verschiedene Griffe derselben Tonhöhe akustisch nicht untersc
 
 ## 🛠️ Voraussetzungen / _Requirements_
 
-- Java **17** oder neuer
+Fertige Mac-Pakete enthalten Java und JavaFX bereits. Ein eigener Mac wird zum
+Erstellen nicht benötigt: [Mac-Pakete mit GitHub Actions bauen und weitergeben](docs/MACOS.md).
+
+Für die Entwicklung und das Bauen aus dem Quellcode:
+
+- JDK **22** (aktuelle Compiler-Einstellung)
 - JavaFX (z. B. über [OpenJFX](https://openjfx.io/))
 - Maven oder IntelliJ IDEA (Projekt basiert auf `pom.xml`)
   
-- _Java **17** or newer_
+- _JDK **22** (current compiler configuration)_
 - _JavaFX (e.g., via [OpenJFX](https://openjfx.io/))_
 - _Maven or IntelliJ IDEA (project based on `pom.xml`)_
 

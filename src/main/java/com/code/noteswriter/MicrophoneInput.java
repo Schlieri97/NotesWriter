@@ -58,7 +58,7 @@ final class MicrophoneInput implements AutoCloseable {
                     listener.accept(new Reading(hz, note, gate.accept(note)));
                 }
             } catch (Exception ex) {
-                if (!closed) error.accept("Mikrofon nicht verfügbar. Gerät und Windows-Mikrofonzugriff prüfen. "
+                if (!closed) error.accept("Mikrofon nicht verfügbar. Gerät und Mikrofonfreigabe in den Systemeinstellungen prüfen. "
                         + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
             } finally {
                 if (capture != null) capture.close();
