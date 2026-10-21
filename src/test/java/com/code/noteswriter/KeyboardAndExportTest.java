@@ -227,6 +227,32 @@ class KeyboardAndExportTest {
     }
 
     @Test
+    void pauseHitAreaSelectsOutsideStrokeAndFollowsItsPosition() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            controller.pauseStrokeButton.fire();
+            Pane pauses = (Pane) root.lookup("#pauseOverlay");
+            Pane hits = (Pane) root.lookup("#pauseHitOverlay");
+            Line line = (Line) pauses.getChildren().get(0);
+            Rectangle hit = (Rectangle) hits.getChildren().get(0);
+            assertTrue(hit.contains(4, 8));
+            assertFalse(line.contains(4, 8));
+            assertTrue((Boolean) call("isElementSelectionTarget", hit));
+            assertNotNull(hit.getOnMouseDragged());
+            assertNotNull(hit.getOnMouseReleased());
+            mouseClick(hit);
+            assertNotNull(line.getEffect());
+            line.setLayoutX(350);
+            line.setLayoutY(225);
+            assertEquals(350, hit.getLayoutX());
+            assertEquals(225, hit.getLayoutY());
+            tap(KeyCode.DELETE);
+            assertTrue(pauses.getChildren().isEmpty());
+            assertTrue(hits.getChildren().isEmpty());
+        });
+    }
+
+    @Test
     void deleteAndBackspaceRemoveSelectedPauseAndRepeat() throws Exception {
         onFx(() -> {
             Pane pauseOverlay = (Pane) root.lookup("#pauseOverlay");
@@ -463,6 +489,34 @@ class KeyboardAndExportTest {
             call("restoreSpecialToken", "PAUSE_FREI|350.0|210.0");
             assertEquals(2, pauseOverlay.getChildren().size());
             assertEquals(350, ((Line) pauseOverlay.getChildren().get(1)).getLayoutX());
+        });
+    }
+
+    @Test
+    void pauseSnapsAfterLastNoteAndSerializesAtTheEnd() throws Exception {
+        onFx(() -> {
+            Pane overlay = (Pane) root.lookup("#pauseOverlay");
+            controller.pauseStrokeButton.fire();
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            root.layout();
+            Line line = (Line) overlay.getChildren().get(0);
+            StackPane last = slot(controller.Gridpane1, "E|NORMAL");
+            Bounds bounds = overlay.sceneToLocal(last.localToScene(last.getBoundsInLocal()));
+            double endX = bounds.getMaxX() + controller.Gridpane1.getHgap() / 2.0;
+            line.setLayoutX(endX + 2);
+            line.setLayoutY(bounds.getMinY() - 6);
+            var markersField = Controller.class.getDeclaredField("pauseMarkers");
+            markersField.setAccessible(true);
+            Object marker = ((List<?>) markersField.get(controller)).get(0);
+            assertTrue((boolean) call("snapPauseMarkerToNearestNote", marker));
+            assertEquals(endX, line.getLayoutX(), 0.01);
+            StringWriter data = new StringWriter();
+            BufferedWriter writer = new BufferedWriter(data);
+            call("writeGridTokens", writer, "Seite1", controller.Gridpane1);
+            writer.flush();
+            assertEquals(List.of("Seite1;D|NORMAL", "Seite1;E|NORMAL", "Seite1;PAUSENSTRICH"),
+                    data.toString().lines().toList());
         });
     }
 
@@ -1366,6 +1420,178 @@ class KeyboardAndExportTest {
     }
 
     @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "noteswriter.desktopTests", matches = "true")
+    void repeatCapCanBeDraggedWithoutSelectingItFirst() throws Exception {
+        Stage[] window = new Stage[1];
+        javafx.geometry.Point2D[] points = new javafx.geometry.Point2D[2];
+        org.testfx.api.FxRobot robot = new org.testfx.api.FxRobot();
+        try {
+            onFx(() -> {
+                tap(KeyCode.D);
+                call("appendSerializedToken", "WIEDERHOLUNG|ANFANG");
+                tap(KeyCode.E);
+                window[0] = new Stage();
+                window[0].setScene(root.getScene());
+                window[0].show();
+                window[0].toFront();
+                root.applyCss();
+                root.layout();
+            });
+            robot.sleep(500);
+            onFx(() -> {
+                StackPane marker = slot(controller.Gridpane1, "WIEDERHOLUNG|ANFANG");
+                Pane cap = marker.getChildren().stream().filter(Pane.class::isInstance)
+                        .map(Pane.class::cast).filter(pane -> pane.getChildren().stream()
+                                .anyMatch(Line.class::isInstance)).findFirst().orElseThrow();
+                Line line = (Line) cap.getChildren().getFirst();
+                points[0] = line.localToScreen(line.getEndX() - 2, line.getEndY());
+                StackPane target = slot(controller.Gridpane1, "E|NORMAL");
+                Bounds bounds = target.localToScreen(target.getBoundsInLocal());
+                points[1] = new javafx.geometry.Point2D(bounds.getMaxX() + 15,
+                        bounds.getMinY() + bounds.getHeight() / 2);
+                assertNull(marker.getEffect());
+            });
+            robot.drag(points[0], MouseButton.PRIMARY).dropTo(points[1]);
+            org.testfx.util.WaitForAsyncUtils.waitForFxEvents();
+            onFx(() -> {
+                assertEquals(List.of("D|NORMAL", "E|NORMAL", "WIEDERHOLUNG|ANFANG"),
+                        tokens(controller.Gridpane1));
+                assertPosition(slot(controller.Gridpane1, "WIEDERHOLUNG|ANFANG"), 2, 1);
+            });
+        } finally {
+            robot.release(MouseButton.PRIMARY);
+            onFx(() -> { if (window[0] != null) window[0].close(); });
+        }
+    }
+
+    @Test
+    void allRepeatVariantsMoveAcrossPagesAndSupportUndoRedo() throws Exception {
+        onFx(() -> {
+            for (String art : List.of("EINZELSTRICH", "DOPPELSTRICH", "GESTRICHELT", "ANFANG", "ENDE")) {
+                call("clearAllPagesBeforeOverwrite");
+                tap(KeyCode.D);
+                call("appendSerializedToken", "WIEDERHOLUNG|" + art);
+                tap(KeyCode.E);
+                controller.rightPageButton.fire();
+                tap(KeyCode.F);
+                tap(KeyCode.G);
+                root.layout();
+                Bounds target = slot(controller.Gridpane2, "G|NORMAL")
+                        .localToScene(slot(controller.Gridpane2, "G|NORMAL").getBoundsInLocal());
+                assertTrue((Boolean) call("moveNoteTo", controller.Gridpane1, 1, 1,
+                        target.getMinX() + 1, target.getCenterY()));
+                assertEquals(List.of("D|NORMAL", "E|NORMAL"), tokens(controller.Gridpane1));
+                assertEquals(List.of("F|NORMAL", "WIEDERHOLUNG|" + art, "G|NORMAL"),
+                        tokens(controller.Gridpane2));
+                assertPosition(slot(controller.Gridpane2, "WIEDERHOLUNG|" + art), 1, 1);
+                call("handleUndoAction", (Object) null);
+                assertEquals(List.of("D|NORMAL", "WIEDERHOLUNG|" + art, "E|NORMAL"),
+                        tokens(controller.Gridpane1));
+                call("handleRedoAction", (Object) null);
+                assertPosition(slot(controller.Gridpane2, "WIEDERHOLUNG|" + art), 1, 1);
+                StringWriter data = new StringWriter();
+                BufferedWriter writer = new BufferedWriter(data);
+                call("writeGridTokens", writer, "Seite2", controller.Gridpane2);
+                writer.flush();
+                assertEquals(List.of("Seite2;F|NORMAL", "Seite2;WIEDERHOLUNG|" + art, "Seite2;G|NORMAL"),
+                        data.toString().lines().toList());
+            }
+        });
+    }
+
+    @Test
+    void multipleRepeatMarkersCanMoveTogetherWithNotes() throws Exception {
+        onFx(() -> {
+            call("appendSerializedToken", "WIEDERHOLUNG|ANFANG");
+            tap(KeyCode.D);
+            call("appendSerializedToken", "WIEDERHOLUNG|ENDE");
+            tap(KeyCode.E);
+            call("setSelectedNotes", List.of(slot(controller.Gridpane1, "WIEDERHOLUNG|ANFANG"),
+                    slot(controller.Gridpane1, "D|NORMAL"), slot(controller.Gridpane1, "WIEDERHOLUNG|ENDE")));
+            root.layout();
+            Bounds target = slot(controller.Gridpane1, "E|NORMAL")
+                    .localToScene(slot(controller.Gridpane1, "E|NORMAL").getBoundsInLocal());
+            assertTrue((Boolean) call("moveSelectedNotesTo", controller.Gridpane1,
+                    target.getMaxX() + 15, target.getCenterY()));
+            assertEquals(List.of("E|NORMAL", "WIEDERHOLUNG|ANFANG", "D|NORMAL", "WIEDERHOLUNG|ENDE"),
+                    tokens(controller.Gridpane1));
+        });
+    }
+
+    @Test
+    void droppedRepeatInsertsAtPointerAndKeepsSlurAttachedToItsNotes() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            call("setSelectedNotes", List.of(slot(controller.Gridpane1, "D|NORMAL"),
+                    slot(controller.Gridpane1, "E|NORMAL")));
+            call("handleAddSlurAction", (Object) null);
+            root.layout();
+            Bounds target = slot(controller.Gridpane1, "D|NORMAL")
+                    .localToScene(slot(controller.Gridpane1, "D|NORMAL").getBoundsInLocal());
+            assertTrue((Boolean) call("insertDroppedToken", controller.Gridpane1, "WIEDERHOLUNG|ANFANG",
+                    target.getMinX() + 1, target.getCenterY()));
+            assertEquals(List.of("WIEDERHOLUNG|ANFANG", "D|NORMAL", "E|NORMAL"), tokens(controller.Gridpane1));
+            StringWriter data = new StringWriter();
+            BufferedWriter writer = new BufferedWriter(data);
+            call("writeAnnotations", writer, "Seite1", controller.Gridpane1);
+            writer.flush();
+            assertEquals("Seite1;BOGEN|1,1;2,1", data.toString().strip());
+        });
+    }
+
+    @Test
+    void repeatFingeringCannotSelectTheRepeatAndItsBarsRemainSelectable() throws Exception {
+        onFx(() -> {
+            for (String art : List.of("ANFANG", "ENDE")) {
+                call("clearAllPagesBeforeOverwrite");
+                call("appendSerializedToken", "WIEDERHOLUNG|" + art);
+                tap(KeyCode.E);
+                root.layout();
+                StackPane repeat = slot(controller.Gridpane1, "WIEDERHOLUNG|" + art);
+                Pane fingering = repeat.getChildren().stream().filter(Pane.class::isInstance)
+                        .map(Pane.class::cast)
+                        .filter(pane -> pane.getChildren().stream().anyMatch(javafx.scene.shape.Ellipse.class::isInstance))
+                        .findFirst().orElseThrow();
+                assertTrue(fingering.isMouseTransparent(), "The decorative fingering must not intercept clicks");
+                mouseClick(fingering.getChildren().getFirst());
+                assertNull(repeat.getEffect());
+                Line bar = repeat.getChildren().stream().filter(Line.class::isInstance)
+                        .map(Line.class::cast).findFirst().orElseThrow();
+                mouseClick(bar);
+                assertNotNull(repeat.getEffect());
+                StackPane note = slot(controller.Gridpane1, "E|NORMAL");
+                mouseClick(note);
+                assertNull(repeat.getEffect());
+                assertNotNull(note.getEffect());
+                var hole = note.getChildren().stream().filter(javafx.scene.shape.Ellipse.class::isInstance)
+                        .map(javafx.scene.shape.Ellipse.class::cast).findFirst().orElseThrow();
+                var center = hole.localToScene(hole.getCenterX(), hole.getCenterY());
+                assertTrue((Boolean) call("noteFingeringContains", note, controller.Gridpane1,
+                        center.getX(), center.getY()));
+                var outside = note.localToScene(-3, 40);
+                assertFalse((Boolean) call("noteFingeringContains", note, controller.Gridpane1,
+                        outside.getX(), outside.getY()), "Selection frames must not enlarge the note hit area");
+            }
+        });
+    }
+
+    @Test
+    void clickingNoteNextToRepeatSelectsOnlyTheNote() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            call("appendSerializedToken", "WIEDERHOLUNG|ANFANG");
+            tap(KeyCode.E);
+            root.layout();
+            StackPane repeat = slot(controller.Gridpane1, "WIEDERHOLUNG|ANFANG");
+            StackPane note = slot(controller.Gridpane1, "E|NORMAL");
+            mouseClick(note);
+            assertNotNull(note.getEffect());
+            assertNull(repeat.getEffect());
+        });
+    }
+
+    @Test
     void selectedRepeatMarkerCanBeMovedToAnotherSlot() throws Exception {
         onFx(() -> {
             tap(KeyCode.D);
@@ -1387,7 +1613,7 @@ class KeyboardAndExportTest {
     }
 
     @Test
-    void noteSelectionDoesNotAlsoSelectRepeatBarButBarCanBeClicked() throws Exception {
+    void rectangleEnclosingWholeRepeatSelectsItTogetherWithNotes() throws Exception {
         onFx(() -> {
             tap(KeyCode.D);
             call("appendSerializedToken", "WIEDERHOLUNG|ANFANG");
@@ -1402,7 +1628,7 @@ class KeyboardAndExportTest {
                     .findFirst().orElseThrow();
             Pane page = (Pane) root.lookup("#pageCanvas");
             Bounds noteBounds = page.sceneToLocal(note.localToScene(note.getBoundsInLocal()));
-            Bounds barBounds = page.sceneToLocal(repeatBar.localToScene(repeatBar.getBoundsInLocal()));
+            Bounds barBounds = (Bounds) call("repeatMarkerLineBoundsInPage", repeat);
             double minX = Math.min(noteBounds.getMinX(), barBounds.getMinX()) - 2;
             double minY = Math.min(noteBounds.getMinY(), barBounds.getMinY()) - 2;
             double maxX = Math.max(noteBounds.getMaxX(), barBounds.getMaxX()) + 2;
@@ -1411,11 +1637,99 @@ class KeyboardAndExportTest {
             call("selectNotesInRectangle", new BoundingBox(minX, minY,
                     maxX - minX, maxY - minY));
             assertNotNull(note.getEffect());
-            assertNull(repeat.getEffect());
+            assertNotNull(repeat.getEffect());
 
             mouseClick(repeatBar);
             assertNull(note.getEffect());
             assertNotNull(repeat.getEffect());
+        });
+    }
+
+    @Test
+    void rectangleOverFingeringsDoesNotSelectRepeatOverhang() throws Exception {
+        onFx(() -> {
+            for (String art : List.of("ANFANG", "ENDE")) {
+                call("clearAllPagesBeforeOverwrite");
+                if (art.equals("ANFANG")) {
+                    call("appendSerializedToken", "WIEDERHOLUNG|" + art);
+                }
+                tap(KeyCode.D);
+                tap(KeyCode.E);
+                if (art.equals("ENDE")) {
+                    call("appendSerializedToken", "WIEDERHOLUNG|" + art);
+                }
+                root.layout();
+                StackPane first = slot(controller.Gridpane1, "D|NORMAL");
+                StackPane last = slot(controller.Gridpane1, "E|NORMAL");
+                StackPane repeat = slot(controller.Gridpane1, "WIEDERHOLUNG|" + art);
+                Bounds firstBounds = (Bounds) call("noteBoundsInPage", first, controller.Gridpane1);
+                Bounds lastBounds = (Bounds) call("noteBoundsInPage", last, controller.Gridpane1);
+                call("selectNotesInRectangle", new BoundingBox(firstBounds.getMinX() - 1,
+                        firstBounds.getMinY(), lastBounds.getMaxX() - firstBounds.getMinX() + 2,
+                        Math.max(firstBounds.getHeight(), lastBounds.getHeight())));
+                assertNotNull(first.getEffect());
+                assertNotNull(last.getEffect());
+                assertNull(repeat.getEffect(), art + " must not be selected through the fingerings below");
+            }
+        });
+    }
+
+    @Test
+    void partiallyCoveredRepeatStrokesAreSelected() throws Exception {
+        onFx(() -> {
+            for (String art : List.of("ANFANG", "ENDE", "EINZELSTRICH", "DOPPELSTRICH", "GESTRICHELT")) {
+                call("clearAllPagesBeforeOverwrite");
+                call("appendSerializedToken", "WIEDERHOLUNG|" + art);
+                root.layout();
+                StackPane repeat = slot(controller.Gridpane1, "WIEDERHOLUNG|" + art);
+                List<Node> lines = new ArrayList<>();
+                call("collectRepeatLines", repeat, lines);
+                assertFalse(lines.isEmpty(), art);
+                Pane page = (Pane) root.lookup("#pageCanvas");
+                for (Node line : lines) {
+                    call("clearAllSelection");
+                    Bounds bounds = page.sceneToLocal(line.localToScene(line.getBoundsInLocal()));
+                    Bounds partial = new BoundingBox(bounds.getCenterX() - 1,
+                            bounds.getCenterY() - 1, 2, 2);
+                    assertFalse(partial.contains((Bounds) call("repeatMarkerLineBoundsInPage", repeat)));
+                    call("selectNotesInRectangle", partial);
+                    assertNotNull(repeat.getEffect(), art + " must allow partial stroke selection");
+                }
+            }
+        });
+    }
+
+    @Test
+    void selectionBoxesProvideFullDragAreaWithoutChangingLayout() throws Exception {
+        onFx(() -> {
+            tap(KeyCode.D);
+            tap(KeyCode.E);
+            root.applyCss();
+            root.layout();
+            StackPane first = slot(controller.Gridpane1, "D|NORMAL");
+            StackPane last = slot(controller.Gridpane1, "E|NORMAL");
+            double firstX = first.getLayoutX(), lastX = last.getLayoutX();
+            double firstWidth = first.getWidth(), lastWidth = last.getWidth();
+            for (List<StackPane> selected : List.of(List.of(first), List.of(first, last))) {
+                call("setSelectedNotes", selected);
+                root.applyCss();
+                root.layout();
+                for (StackPane note : selected) {
+                    Rectangle box = (Rectangle) note.getProperties().get("selectionBox");
+                    assertFalse(box.isMouseTransparent());
+                    assertFalse(box.isManaged());
+                    assertTrue(box.contains(box.getWidth() / 2, box.getHeight() / 2));
+                    assertNotNull(box.getOnDragDetected());
+                    assertTrue((Boolean) call("isElementSelectionTarget", box));
+                }
+                assertEquals(firstX, first.getLayoutX(), 0.001);
+                assertEquals(lastX, last.getLayoutX(), 0.001);
+                assertEquals(firstWidth, first.getWidth(), 0.001);
+                assertEquals(lastWidth, last.getWidth(), 0.001);
+            }
+            call("clearAllSelection");
+            assertNull(first.getProperties().get("selectionBox"));
+            assertNull(last.getProperties().get("selectionBox"));
         });
     }
 

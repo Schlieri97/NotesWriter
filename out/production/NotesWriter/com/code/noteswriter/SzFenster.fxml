@@ -62,6 +62,9 @@
                         <Pane fx:id="emptyBlockOverlay" pickOnBounds="false"
                               minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                               minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
+                        <Pane fx:id="pauseHitOverlay" pickOnBounds="false"
+                              minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
+                              minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
                         <Pane fx:id="pauseOverlay" pickOnBounds="false"
                               minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                               minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />

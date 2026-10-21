@@ -155,6 +155,8 @@ public class Controller {
     @FXML
     private Pane pauseOverlay;
     @FXML
+    private Pane pauseHitOverlay;
+    @FXML
     private Pane annotationOverlay;
     @FXML
     private Rectangle activePageIndicator;
@@ -236,6 +238,7 @@ public class Controller {
     private static final class PauseMarker {
         private GridPane grid;
         private final Line line;
+        private final Rectangle hitArea = new Rectangle(-5, -4, 10, 24);
         private int column;
         private int row;
         private boolean free;
@@ -627,9 +630,11 @@ public class Controller {
                   Erst beim Loslassen der linken Maustaste wird die Auswahl übernommen.
                 • Ein Linksklick außerhalb der markierten Noten hebt die Auswahl auf und schließt das
                   Auswahlmenü. Ein Klick auf eine andere Note wählt diese Note aus.
-                • Eine einzelne markierte Note oder ein Wiederholungszeichen kann mit gedrückter linker
+                • Eine einzelne markierte Note kann mit gedrückter linker
                   Maustaste an eine andere Position auf derselben oder der anderen Seite verschoben werden.
-                • Mehrere markierte Noten können gemeinsam mit gedrückter linker Maustaste an die
+                • Alle Wiederholungszeichen lassen sich direkt am Zeichen oder Querstrich greifen und
+                  an eine beliebige Position in der Notenfolge ziehen. Sie rasten am Notenraster ein.
+                • Mehrere markierte Noten und Wiederholungszeichen können gemeinsam an die
                   Cursorposition auf derselben oder der anderen Seite verschoben werden.
                 • Mit einem Rechtsklick auf ein markiertes Element öffnet sich das Auswahlmenü.
                   Dort stehen „Auswahl aufheben“ und „Ausgewählte Elemente löschen“ zur Verfügung.
@@ -652,8 +657,8 @@ public class Controller {
                 • Rechtsklick auf den Pausenstrich und „Pausenstrich frei platzieren“ wählen,
                   dann mit der linken Maustaste an eine beliebige Stelle der Seite ziehen.
                 • Ein Pausenstrich kann mit der rechten Maustaste und „Pausenstrich löschen“ entfernt werden.
-                • Das Wiederholungszeichen kann auf die Seite gezogen werden; dadurch wird ein
-                  Wiederholungsanfang eingefügt. Der Pausenstrich kann ebenfalls auf die Seite gezogen werden.
+                • Den Button „Wiederholungszeichen“ auf die Seite ziehen, um einen Wiederholungsanfang
+                  an der Zeigerposition im Notenraster einzufügen. Der Pausenstrich kann ebenfalls auf die Seite gezogen werden.
 
                 Freien Text verwenden
                 • Text in „Freien Text eingeben“ schreiben und „Text auf Seite einfügen“ anklicken.
@@ -1046,7 +1051,8 @@ public class Controller {
         clearNoteSelection();
         clearNonNoteSelection();
         selectedPauseMarkers.add(marker);
-        marker.line.setStroke(Color.web("#1976D2"));
+        marker.line.setStroke(Color.web("#C62828"));
+        marker.line.setEffect(new DropShadow(6, Color.web("#C62828", 0.9)));
     }
 
     private void clearNonNoteSelection() {
@@ -1056,6 +1062,7 @@ public class Controller {
         }
         for (PauseMarker marker : selectedPauseMarkers) {
             marker.line.setStroke(Color.BLACK);
+            marker.line.setEffect(null);
         }
         selectedTextAnnotations.clear();
         selectedSlurPath = null;
@@ -1242,9 +1249,9 @@ public class Controller {
         selectionRectangle = new Rectangle();
         selectionRectangle.setManaged(false);
         selectionRectangle.setMouseTransparent(true);
-        selectionRectangle.setFill(Color.web("#1976D2", 0.16));
-        selectionRectangle.setStroke(Color.web("#1976D2", 0.85));
-        selectionRectangle.setStrokeWidth(1.5);
+        selectionRectangle.setFill(Color.web("#C62828", 0.12));
+        selectionRectangle.setStroke(Color.web("#C62828", 0.9));
+        selectionRectangle.setStrokeWidth(2.0);
         selectionRectangle.setVisible(false);
         pageCanvas.getChildren().add(selectionRectangle);
 
@@ -1279,6 +1286,26 @@ public class Controller {
                     && !isPageTextFieldTarget(event.getTarget())) {
                 selectionStart = pageCanvas.sceneToLocal(event.getSceneX(), event.getSceneY());
                 draggingSelection = false;
+            }
+        });
+
+        // Repeat bars may visually overlap the next fingering. Give a real
+        // note hit priority on click so selecting that note never selects the
+        // repeat marker behind it.
+        pageCanvas.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
+            if (event.getButton() != MouseButton.PRIMARY || !isRepeatSelectionTarget(event.getTarget())) {
+                return;
+            }
+            for (GridPane grid : List.of(Gridpane1, Gridpane2)) {
+                for (Node node : grid.getChildren()) {
+                    if (node instanceof StackPane note && isSelectableContainer(note)
+                            && !isRepeatMarker(note) && !EMPTY_BLOCK.equals(note.getUserData())
+                            && noteFingeringContains(note, grid, event.getSceneX(), event.getSceneY())) {
+                        selectNote(note, grid);
+                        event.consume();
+                        return;
+                    }
+                }
             }
         });
 
@@ -1459,10 +1486,18 @@ public class Controller {
                     .anyMatch(annotation -> annotation.path == path)) {
                 return true;
             }
-            if (node instanceof Line line && pauseMarkers.stream()
-                    .anyMatch(marker -> marker.line == line)) {
-                return true;
+            for (PauseMarker marker : pauseMarkers) {
+                if (node == marker.line || node == marker.hitArea) return true;
             }
+            node = node.getParent();
+        }
+        return false;
+    }
+
+    private boolean isRepeatSelectionTarget(Object target) {
+        if (!(target instanceof Node node)) return false;
+        while (node != null) {
+            if (node instanceof StackPane stackPane && isRepeatMarker(stackPane)) return true;
             node = node.getParent();
         }
         return false;
@@ -1542,25 +1577,13 @@ public class Controller {
             }
         }
 
-        // A repeat marker spans the complete note height for layout purposes,
-        // but only its visible bars/caps are selectable. If such a bar overlaps
-        // a note selected by the rectangle, the note wins; clicking the bar
-        // directly still selects the repeat marker via its mouse handler.
+        // Partial strokes count, but empty space underneath a cap does not.
         for (StackPane repeatMarker : repeatMarkers) {
             GridPane grid = findNoteGrid(repeatMarker);
             if (grid == null) {
                 continue;
             }
-            Bounds repeatBounds = repeatMarkerLineBoundsInPage(repeatMarker);
-            if (!selectionBounds.intersects(repeatBounds)) {
-                continue;
-            }
-            // The marker's layout bounds cover the complete slot and can
-            // overlap the note below even where no bar is drawn. Once a note
-            // is inside the rectangle, keep that rectangle selection focused
-            // on notes; the repeat remains selectable by clicking its bar.
-            if (!notes.isEmpty()
-                    && selectionBounds.intersects(noteBoundsInPage(repeatMarker, grid))) {
+            if (!repeatMarkerIntersectsSelection(repeatMarker, selectionBounds)) {
                 continue;
             }
             notes.add(repeatMarker);
@@ -1625,6 +1648,36 @@ public class Controller {
             return pageCanvas.sceneToLocal(noteContainer.localToScene(noteContainer.getBoundsInLocal()));
         }
         return new javafx.geometry.BoundingBox(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private boolean noteFingeringContains(StackPane note, GridPane grid, double sceneX, double sceneY) {
+        Integer column = GridPane.getColumnIndex(note);
+        Integer row = GridPane.getRowIndex(note);
+        if (column == null || row == null) return false;
+        for (Node node : grid.getChildren()) {
+            Integer nodeRow = GridPane.getRowIndex(node);
+            if (!Objects.equals(GridPane.getColumnIndex(node), column)
+                    || nodeRow == null || nodeRow < row || nodeRow > row + 8) continue;
+            if (node instanceof Ellipse && node.contains(node.sceneToLocal(sceneX, sceneY))) return true;
+            if (node == note) {
+                for (Node child : note.getChildren()) {
+                    if (child instanceof Ellipse && child.contains(child.sceneToLocal(sceneX, sceneY))) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean repeatMarkerIntersectsSelection(StackPane repeatMarker, Bounds selectionBounds) {
+        List<Node> lines = new ArrayList<>();
+        collectRepeatLines(repeatMarker, lines);
+        for (Node line : lines) {
+            Bounds bounds = pageCanvas.sceneToLocal(line.localToScene(line.getBoundsInLocal()));
+            if (selectionBounds.intersects(bounds)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Bounds repeatMarkerLineBoundsInPage(StackPane repeatMarker) {
@@ -1711,8 +1764,11 @@ public class Controller {
         if (payload[0].equals("SPECIAL") && payload.length >= 2) {
             switch (payload[1]) {
                 case "PAUSE" -> addPauseStroke();
-                case "REPEAT_START" -> addWiederholungszeichen(Wiederholungsart.ANFANG);
-                case "REPEAT_END" -> addWiederholungszeichen(Wiederholungsart.ENDE);
+                case "REPEAT_START", "REPEAT_END" -> {
+                    return insertDroppedToken(activeGridPane,
+                            "WIEDERHOLUNG|" + (payload[1].equals("REPEAT_START") ? "ANFANG" : "ENDE"),
+                            event.getSceneX(), event.getSceneY());
+                }
                 default -> {
                     return false;
                 }
@@ -1732,7 +1788,6 @@ public class Controller {
 
     private boolean moveSelectedNotesTo(GridPane sourceGrid, double sceneX, double sceneY) {
         if (selectedNoteContainers.size() < 2 || sourceGrid == null
-                || selectedNoteContainers.stream().anyMatch(this::isRepeatMarker)
                 || selectedNoteContainers.stream().anyMatch(note -> findNoteGrid(note) != sourceGrid)) {
             return false;
         }
@@ -2006,19 +2061,23 @@ public class Controller {
     }
 
     private boolean insertDroppedNote(GridPane grid, String baseNote, double sceneX, double sceneY) {
+        return insertDroppedToken(grid, baseNote + "|NORMAL", sceneX, sceneY);
+    }
+
+    private boolean insertDroppedToken(GridPane grid, String token, double sceneX, double sceneY) {
         List<SerializedGridToken> tokens = collectGridTokens(grid);
         int insertionIndex = insertionIndexAt(grid, tokens, sceneX, sceneY);
         List<SerializedGridToken> inserted = new ArrayList<>(tokens);
-        inserted.add(insertionIndex, new SerializedGridToken(baseNote + "|NORMAL", -1, -1, false));
+        inserted.add(insertionIndex, new SerializedGridToken(token, -1, -1, false));
         if (!canFitGridTokens(inserted)) {
-            keyboardStatus.setText("Für diese Note ist auf der Seite kein Platz mehr.");
+            keyboardStatus.setText("Für dieses Element ist auf der Seite kein Platz mehr.");
             return false;
         }
 
         markDocumentDirty();
         clearAllSelection();
-        int noteInsertionIndex = (int) tokens.subList(0, insertionIndex).stream()
-                .filter(token -> isNoteToken(token.token())).count();
+        int noteInsertionIndex = isNoteToken(token) ? (int) tokens.subList(0, insertionIndex).stream()
+                .filter(existing -> isNoteToken(existing.token())).count() : -1;
         rebuildGridKeepingSlurs(grid, tokens, inserted, noteInsertionIndex);
         return true;
     }
@@ -2168,15 +2227,22 @@ public class Controller {
         pauseLine.setManaged(false);
         pauseLine.setPickOnBounds(true);
         PauseMarker marker = new PauseMarker(grid, pauseLine, column, row);
-        installPauseHandlers(marker);
+        marker.hitArea.setFill(Color.TRANSPARENT);
+        marker.hitArea.setManaged(false);
+        marker.hitArea.layoutXProperty().bind(pauseLine.layoutXProperty());
+        marker.hitArea.layoutYProperty().bind(pauseLine.layoutYProperty());
+        installPauseHandlers(marker, pauseLine);
+        installPauseHandlers(marker, marker.hitArea);
         pauseMarkers.add(marker);
         pauseOverlay.getChildren().add(pauseLine);
+        pauseHitOverlay.getChildren().add(marker.hitArea);
         return marker;
     }
 
-    private void installPauseHandlers(PauseMarker marker) {
+    private void installPauseHandlers(PauseMarker marker, Node target) {
         Line pauseLine = marker.line;
-        pauseLine.setOnMouseClicked(event -> {
+        target.setCursor(Cursor.HAND);
+        target.setOnMouseClicked(event -> {
             if (event.getButton() == MouseButton.PRIMARY) {
                 selectPauseMarker(marker);
                 event.consume();
@@ -2185,7 +2251,7 @@ public class Controller {
                 event.consume();
             }
         });
-        pauseLine.setOnMouseDragged(event -> {
+        target.setOnMouseDragged(event -> {
             if (!event.isPrimaryButtonDown()) return;
             if (!marker.dragging) {
                 markDocumentDirty();
@@ -2196,7 +2262,7 @@ public class Controller {
             pauseLine.setLayoutY(Math.max(0, Math.min(PAGE_HEIGHT - 16, position.getY())));
             event.consume();
         });
-        pauseLine.setOnMouseReleased(event -> {
+        target.setOnMouseReleased(event -> {
             if (event.getButton() != MouseButton.PRIMARY || !marker.dragging) return;
             if (marker.free) {
                 marker.grid = pauseLine.getLayoutX() < PAGE_WIDTH / 2 ? Gridpane1 : Gridpane2;
@@ -2219,14 +2285,18 @@ public class Controller {
                 Integer column = GridPane.getColumnIndex(node), row = GridPane.getRowIndex(node);
                 if (column == null || row == null) continue;
                 Bounds bounds = pauseOverlay.sceneToLocal(node.localToScene(node.getBoundsInLocal()));
-                double x = bounds.getMinX() - grid.getHgap() / 2.0;
                 double y = bounds.getMinY() - 6;
-                double distance = Math.hypot(marker.line.getLayoutX() - x, marker.line.getLayoutY() - y);
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    bestGrid = grid;
-                    bestColumn = column;
-                    bestRow = row;
+                // Both edges are insertion positions, including after the last note.
+                for (int side = 0; side < 2; side++) {
+                    double x = side == 0 ? bounds.getMinX() - grid.getHgap() / 2.0
+                            : bounds.getMaxX() + grid.getHgap() / 2.0;
+                    double distance = Math.hypot(marker.line.getLayoutX() - x, marker.line.getLayoutY() - y);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestGrid = grid;
+                        bestColumn = column + side;
+                        bestRow = row;
+                    }
                 }
             }
         }
@@ -2292,6 +2362,7 @@ public class Controller {
             boolean matches = marker.grid == grid && marker.column == column && marker.row == row;
             if (matches) {
                 pauseOverlay.getChildren().remove(marker.line);
+                pauseHitOverlay.getChildren().remove(marker.hitArea);
             }
             return matches;
         });
@@ -2337,6 +2408,7 @@ public class Controller {
         if (pauseMarkers.contains(marker)) markDocumentDirty();
         if (pauseMarkers.remove(marker)) {
             pauseOverlay.getChildren().remove(marker.line);
+            pauseHitOverlay.getChildren().remove(marker.hitArea);
             selectedPauseMarkers.remove(marker);
         }
     }
@@ -2345,6 +2417,7 @@ public class Controller {
         pauseMarkers.removeIf(marker -> {
             if (marker.grid == grid) {
                 pauseOverlay.getChildren().remove(marker.line);
+                pauseHitOverlay.getChildren().remove(marker.hitArea);
                 selectedPauseMarkers.remove(marker);
                 return true;
             }
@@ -2520,8 +2593,10 @@ public class Controller {
         marker.setPrefHeight(87);
         marker.setMaxHeight(87);
         marker.setAlignment(Pos.TOP_CENTER);
+        marker.setCursor(Cursor.HAND);
         // Transparent space around the marker must not cover the note below;
-        // the visible Line children still receive clicks and bubble them here.
+        // Only the bars and cap receive clicks; the decorative fingering must
+        // never select or start dragging the repeat marker.
         marker.setPickOnBounds(false);
 
         marker.getChildren().add(createCisDesFingering());
@@ -2552,6 +2627,7 @@ public class Controller {
         fingering.setMinSize(NOTE_SLOT_WIDTH, 87);
         fingering.setPrefSize(NOTE_SLOT_WIDTH, 87);
         fingering.setMaxSize(NOTE_SLOT_WIDTH, 87);
+        fingering.setPickOnBounds(false);
         fingering.setMouseTransparent(true);
 
         boolean[] cisDesGriff = model.getGriff("Cis_Des");
@@ -2587,7 +2663,7 @@ public class Controller {
         overlay.setMinSize(NOTE_SLOT_WIDTH, 0);
         overlay.setPrefSize(NOTE_SLOT_WIDTH, 0);
         overlay.setMaxSize(NOTE_SLOT_WIDTH, 0);
-        overlay.setMouseTransparent(true);
+        overlay.setPickOnBounds(false);
 
         Line cap = pointsRight
                 ? new Line(NOTE_SLOT_WIDTH / 2.0, 0, NOTE_SLOT_WIDTH / 2.0 + 20, 0)
@@ -2755,12 +2831,14 @@ public class Controller {
                         + " Plätzen · Minus/Plus oder Rechtsklick zum Anpassen · Mitte ziehen zum Verschieben"));
                 installEmptyBlockGuideControls(guide, owner);
                 installEmptyBlockGuideHandlers(guide, owner, grid, guideWidth, size);
-                if (selectedEmptyBlocks.contains(owner)) {
-                    guide.setEffect(new DropShadow(8, Color.web("#1976D2")));
+                boolean selected = selectedEmptyBlocks.contains(owner);
+                if (selected) {
+                    guide.setEffect(new DropShadow(8, Color.web("#C62828", 0.9)));
                 }
                 guide.setManaged(false);
                 guide.resize(guideWidth, 30);
-                guide.setStyle("-fx-background-color: #E9F3FF; -fx-border-color: #4677A8; "
+                guide.setStyle("-fx-background-color: " + (selected ? "#FFF0F0" : "#E9F3FF")
+                        + "; -fx-border-color: " + (selected ? "#C62828" : "#4677A8") + "; "
                         + "-fx-border-style: dashed; -fx-border-radius: 5px; -fx-background-radius: 5px; "
                         + "-fx-text-fill: #173B61; -fx-font-size: " + (size == DEFAULT_EMPTY_BLOCK_SIZE ? 14 : 12)
                         + "px; -fx-font-weight: bold;");
@@ -3050,7 +3128,7 @@ public class Controller {
     private void addEmptyBlockToSelection(Node guide) {
         if (guide.getProperties().get(EMPTY_BLOCK_OWNER) instanceof StackPane owner) {
             selectedEmptyBlocks.add(owner);
-            guide.setEffect(new DropShadow(8, Color.web("#1976D2")));
+            guide.setEffect(new DropShadow(8, Color.web("#C62828", 0.9)));
         }
     }
 
@@ -3155,10 +3233,10 @@ public class Controller {
             return;
         }
         selectedNoteContainer = selectedNoteContainers.get(0);
-        selectedNoteContainer.setEffect(new DropShadow(8, Color.web("#1976D2")));
+        applySelectedNoteStyle(selectedNoteContainer);
         for (StackPane note : selectedNoteContainers) {
             if (note != selectedNoteContainer) {
-                note.setEffect(new DropShadow(8, Color.web("#1976D2")));
+                applySelectedNoteStyle(note);
             }
         }
         if (selectedNoteContainers.size() >= 2) {
@@ -3167,8 +3245,36 @@ public class Controller {
         }
     }
 
+    private void applySelectedNoteStyle(StackPane note) {
+        note.setEffect(new DropShadow(8, Color.web("#C62828", 0.9)));
+        if (note.getProperties().get("selectionBox") instanceof Rectangle) {
+            return;
+        }
+        Rectangle box = new Rectangle(NOTE_SLOT_WIDTH + 6, 93);
+        box.setFill(Color.TRANSPARENT);
+        box.setStroke(Color.web("#C62828"));
+        box.setStrokeWidth(2.0);
+        box.setArcWidth(7);
+        box.setArcHeight(7);
+        box.setMouseTransparent(false);
+        box.setPickOnBounds(true);
+        box.setManaged(false);
+        box.setTranslateX(-3);
+        box.setTranslateY(-3);
+        note.getChildren().add(box);
+        note.getProperties().put("selectionBox", box);
+        installNoteSelectionHandler(box, note, findNoteGrid(note));
+    }
+
     private void installNoteSelectionHandler(Node node, StackPane noteContainer, GridPane grid) {
+        node.setCursor(Cursor.HAND);
         node.setOnDragDetected(event -> {
+            if (event.getButton() != MouseButton.PRIMARY) return;
+            if (isRepeatMarker(noteContainer) && event.getTarget() instanceof Ellipse) return;
+            // Repeat signs can be grabbed immediately at their bars or cap.
+            if (isRepeatMarker(noteContainer) && !selectedNoteContainers.contains(noteContainer)) {
+                setSelectedNotes(List.of(noteContainer));
+            }
             if (selectedNoteContainers.isEmpty()
                     || !selectedNoteContainers.contains(noteContainer)) {
                 return;
@@ -3180,8 +3286,7 @@ public class Controller {
                 return;
             }
             if (selectedNoteContainers.size() > 1
-                    && (selectedNoteContainers.stream().anyMatch(this::isRepeatMarker)
-                    || selectedNoteContainers.stream().anyMatch(selected -> findNoteGrid(selected) != sourceGrid))) {
+                    && selectedNoteContainers.stream().anyMatch(selected -> findNoteGrid(selected) != sourceGrid)) {
                 return;
             }
 
@@ -3193,6 +3298,7 @@ public class Controller {
             event.consume();
         });
         node.setOnMouseClicked(event -> {
+            if (isRepeatMarker(noteContainer) && event.getTarget() instanceof Ellipse) return;
             if (event.getButton() == MouseButton.PRIMARY) {
                 selectNote(noteContainer, grid);
                 event.consume();
@@ -3397,6 +3503,7 @@ public class Controller {
             for (PauseMarker marker : freeMarkers) {
                 pauseMarkers.add(marker);
                 pauseOverlay.getChildren().add(marker.line);
+                pauseHitOverlay.getChildren().add(marker.hitArea);
             }
 
             if (oldActiveGrid != grid) {
@@ -3445,6 +3552,9 @@ public class Controller {
     private void clearNoteSelection() {
         for (StackPane note : selectedNoteContainers) {
             note.setEffect(null);
+            if (note.getProperties().remove("selectionBox") instanceof Node box) {
+                note.getChildren().remove(box);
+            }
         }
         selectedNoteContainers.clear();
         selectedNoteContainer = null;

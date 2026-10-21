@@ -179,6 +179,7 @@ _Each line represents a note and its corresponding page._
 
 - Klick auf Note → fügt Notenbild in die aktuelle Seite ein
 - Note per Drag-and-Drop auf eine Seite ziehen → an der Zeigerposition einfügen, auch zwischen vorhandenen Noten
+- **Wiederholungszeichen verschieben** → alle fünf Varianten direkt am Zeichen oder Querstrich greifen und an die gewünschte Position in der Notenfolge ziehen. Sie rasten am Notenraster ein, auch auf der anderen Seite. Vorheriges Markieren ist nicht nötig; mehrere markierte Zeichen können gemeinsam verschoben werden.
 - „Tastenkürzel & Tonvarianten“ → Details bei Bedarf aufklappen
 - **„Linke Seite“ / „Rechte Seite“** → wählt die gewünschte Notenseite aus
 - **„Pausenstrich“** → fügt einen waagerechten Pausenstrich ein
