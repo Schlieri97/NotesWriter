@@ -68,6 +68,9 @@
                         <Pane fx:id="pauseOverlay" pickOnBounds="false"
                               minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                               minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
+                        <Pane fx:id="slurHitOverlay" pickOnBounds="false"
+                              minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
+                              minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
                         <Pane fx:id="annotationOverlay" pickOnBounds="false"
                               minWidth="1290.0" prefWidth="1290.0" maxWidth="1290.0"
                               minHeight="910.0" prefHeight="910.0" maxHeight="910.0" />
@@ -225,4 +228,6 @@
             </content>
         </ScrollPane>
     </HBox>
+    <Label fx:id="versionLabel" text="Version 1" AnchorPane.topAnchor="5.0" AnchorPane.rightAnchor="18.0"
+           style="-fx-text-fill: #607D8B; -fx-font-size: 11px; -fx-font-weight: bold;" />
 </AnchorPane>

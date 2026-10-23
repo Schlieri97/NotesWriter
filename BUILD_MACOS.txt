@@ -1,0 +1,33 @@
+SZ-NOTENSCHREIBER unter macOS bauen und paketieren
+===================================================
+
+Voraussetzungen
+---------------
+
+- JDK 22 muss installiert sein.
+- macOS stellt `jpackage` mit dem JDK bereit.
+
+Im Projektordner ausführen:
+
+    chmod +x mvnw
+    ./mvnw clean package
+    ./mvnw javafx:jlink
+
+Danach das startbare App-Bundle erzeugen:
+
+    mkdir -p dist/macos
+    jpackage --type app-image --name SZ-Notenschreiber --app-version 1.0.0 \
+      --runtime-image target/app \
+      --module com.example.noteswriter/com.code.noteswriter.Main \
+      --dest dist/macos
+
+Das Ergebnis liegt unter `dist/macos/SZ-Notenschreiber.app`. Für die Weitergabe
+kann es als ZIP verpackt werden:
+
+    ditto -c -k --sequesterRsrc --keepParent \
+      dist/macos/SZ-Notenschreiber.app \
+      dist/SZ-Notenschreiber-macos.zip
+
+Alternativ kann der Workflow `.github/workflows/build.yml` in GitHub über
+Actions → Build desktop apps → Run workflow für Windows und macOS gestartet
+werden. Beide ZIP-Dateien werden anschließend als Artifacts angeboten.

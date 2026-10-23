@@ -157,7 +157,11 @@ public class Controller {
     @FXML
     private Pane pauseHitOverlay;
     @FXML
+    private Pane slurHitOverlay;
+    @FXML
     private Pane annotationOverlay;
+    @FXML
+    private Label versionLabel;
     @FXML
     private Rectangle activePageIndicator;
     @FXML
@@ -220,6 +224,7 @@ public class Controller {
     private final List<PauseMarker> pauseMarkers = new ArrayList<>();
     private final List<PageTextAnnotation> textAnnotations = new ArrayList<>();
     private final List<SlurAnnotation> slurAnnotations = new ArrayList<>();
+    private final Map<Path, Path> slurHitTargets = new IdentityHashMap<>();
     private final Map<TextField, Integer> pageHeadingSizes = new IdentityHashMap<>();
     private boolean documentDirty;
     private static final int HISTORY_LIMIT = 100;
@@ -492,6 +497,7 @@ public class Controller {
 
     @FXML
     public void initialize() {
+        versionLabel.setText("Version " + AppInfo.VERSION);
         setupMicrophone();
         setupResponsivePage();
         setupAllNoteButtons();
@@ -1037,14 +1043,15 @@ public class Controller {
 
     private void addTextAnnotationToSelection(Text text) {
         selectedTextAnnotations.add(text);
-        text.setFill(Color.web("#1976D2"));
+        text.setFill(Color.web("#C62828"));
     }
 
     private void selectSlur(Path path) {
         clearNoteSelection();
         clearNonNoteSelection();
         selectedSlurPath = path;
-        path.setStroke(Color.web("#1976D2"));
+        path.setStroke(Color.web("#C62828"));
+        path.setEffect(new DropShadow(6, Color.web("#C62828", 0.9)));
     }
 
     private void selectPauseMarker(PauseMarker marker) {
@@ -1059,6 +1066,7 @@ public class Controller {
         for (Text text : selectedTextAnnotations) text.setFill(Color.BLACK);
         if (selectedSlurPath != null) {
             selectedSlurPath.setStroke(Color.BLACK);
+            selectedSlurPath.setEffect(null);
         }
         for (PauseMarker marker : selectedPauseMarkers) {
             marker.line.setStroke(Color.BLACK);
@@ -1169,7 +1177,37 @@ public class Controller {
                     end.getX(), end.getY()
             ));
         }
+        Path hitPath = new Path();
+        for (var element : path.getElements()) {
+            if (element instanceof MoveTo move) {
+                hitPath.getElements().add(new MoveTo(move.getX(), move.getY()));
+            } else if (element instanceof CubicCurveTo curve) {
+                hitPath.getElements().add(new CubicCurveTo(curve.getControlX1(), curve.getControlY1(),
+                        curve.getControlX2(), curve.getControlY2(), curve.getX(), curve.getY()));
+            }
+        }
+        hitPath.setFill(null);
+        hitPath.setStroke(Color.TRANSPARENT);
+        hitPath.setStrokeWidth(14.0);
+        hitPath.setPickOnBounds(false);
+        hitPath.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY) {
+                selectSlur(path);
+                event.consume();
+            } else if (event.getButton() == MouseButton.SECONDARY) {
+                showSlurContextMenu(path, event.getScreenX(), event.getScreenY());
+                event.consume();
+            }
+        });
+        slurHitTargets.put(path, hitPath);
+        slurHitOverlay.getChildren().add(hitPath);
         return path;
+    }
+
+    private void removeSlurVisuals(Path path) {
+        annotationOverlay.getChildren().remove(path);
+        Path hitPath = slurHitTargets.remove(path);
+        if (hitPath != null) slurHitOverlay.getChildren().remove(hitPath);
     }
 
     private void showSlurContextMenu(Path path, double screenX, double screenY) {
@@ -1192,7 +1230,7 @@ public class Controller {
             markDocumentDirty();
         }
         slurAnnotations.removeIf(annotation -> annotation.path == path);
-        annotationOverlay.getChildren().remove(path);
+        removeSlurVisuals(path);
         if (selectedSlurPath == path) {
             selectedSlurPath = null;
         }
@@ -1482,8 +1520,9 @@ public class Controller {
                     .anyMatch(annotation -> annotation.text == text)) {
                 return true;
             }
-            if (node instanceof Path path && slurAnnotations.stream()
-                    .anyMatch(annotation -> annotation.path == path)) {
+            if ((node instanceof Path path && slurAnnotations.stream()
+                    .anyMatch(annotation -> annotation.path == path))
+                    || slurHitTargets.containsValue(node)) {
                 return true;
             }
             for (PauseMarker marker : pauseMarkers) {
@@ -1614,7 +1653,8 @@ public class Controller {
     private void addPauseMarkerToSelection(PauseMarker marker) {
         if (!selectedPauseMarkers.contains(marker)) {
             selectedPauseMarkers.add(marker);
-            marker.line.setStroke(Color.web("#1976D2"));
+            marker.line.setStroke(Color.web("#C62828"));
+            marker.line.setEffect(new DropShadow(6, Color.web("#C62828", 0.9)));
         }
     }
 
@@ -2435,7 +2475,7 @@ public class Controller {
         });
         slurAnnotations.removeIf(annotation -> {
             if (annotation.grid == grid) {
-                annotationOverlay.getChildren().remove(annotation.path);
+                removeSlurVisuals(annotation.path);
                 if (selectedSlurPath == annotation.path) {
                     selectedSlurPath = null;
                 }
@@ -3542,7 +3582,7 @@ public class Controller {
     private void removeSlursForGrid(GridPane grid) {
         slurAnnotations.removeIf(annotation -> {
             if (annotation.grid == grid) {
-                annotationOverlay.getChildren().remove(annotation.path);
+                removeSlurVisuals(annotation.path);
                 return true;
             }
             return false;
@@ -3922,7 +3962,7 @@ public class Controller {
         NoteSlot removedSlot = new NoteSlot(columnOffset, rowOffset);
         slurAnnotations.removeIf(annotation -> {
             if (annotation.grid == activeGridPane && annotation.slots.contains(removedSlot)) {
-                annotationOverlay.getChildren().remove(annotation.path);
+                removeSlurVisuals(annotation.path);
                 return true;
             }
             return false;

@@ -1,0 +1,96 @@
+name: Build desktop apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  package:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win64
+          - os: macos-latest
+            platform: macos
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 22
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '22'
+          cache: maven
+
+      - name: Make Maven wrapper executable
+        if: runner.os != 'Windows'
+        run: chmod +x mvnw
+
+      - name: Read application version (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $match = Select-String -Path src/main/java/com/code/noteswriter/AppInfo.java -Pattern 'VERSION = "([^"]+)"'
+          "APP_VERSION=$($match.Matches.Groups[1].Value)" >> $env:GITHUB_ENV
+
+      - name: Read application version (macOS)
+        if: runner.os == 'macOS'
+        run: echo "APP_VERSION=$(sed -n 's/.*VERSION = "\([^"]*\)".*/\1/p' src/main/java/com/code/noteswriter/AppInfo.java)" >> "$GITHUB_ENV"
+
+      - name: Compile and test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\mvnw.cmd -B -ntp clean package
+
+      - name: Compile and test (macOS)
+        if: runner.os == 'macOS'
+        run: ./mvnw -B -ntp clean package
+
+      - name: Build Java runtime image (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\mvnw.cmd -B -ntp javafx:jlink
+
+      - name: Build Java runtime image (macOS)
+        if: runner.os == 'macOS'
+        run: ./mvnw -B -ntp javafx:jlink
+
+      - name: Package Windows app image
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\windows | Out-Null
+          jpackage --type app-image --name SZ-Notenschreiber --app-version $env:APP_VERSION `
+            --icon logo.ico `
+            --runtime-image target\app `
+            --module com.example.noteswriter/com.code.noteswriter.Main `
+            --dest dist\windows
+          Compress-Archive -Path dist\windows\SZ-Notenschreiber `
+            -DestinationPath dist\SZ-Notenschreiber-${{ matrix.platform }}.zip
+
+      - name: Package macOS app image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p dist/macos
+          jpackage --type app-image --name SZ-Notenschreiber --app-version "$APP_VERSION" \
+            --runtime-image target/app \
+            --module com.example.noteswriter/com.code.noteswriter.Main \
+            --dest dist/macos
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/macos/SZ-Notenschreiber.app \
+            dist/SZ-Notenschreiber-${{ matrix.platform }}.zip
+
+      - name: Upload packaged app
+        uses: actions/upload-artifact@v4
+        with:
+          name: SZ-Notenschreiber-${{ matrix.platform }}
+          path: dist/SZ-Notenschreiber-${{ matrix.platform }}.zip
+          if-no-files-found: error

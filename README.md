@@ -136,6 +136,13 @@ _Or in **IntelliJ IDEA**:_
 2. _Make sure JavaFX is properly configured._
 3. _Run the `Main` class._
 
+### **3. Desktop-Builds über GitHub Actions** / _Build desktop apps on GitHub_
+
+Der Workflow `.github/workflows/build.yml` baut automatisch für Windows und
+macOS. Er kann nach einem Push auf `main`/`master` oder manuell unter
+**Actions → Build desktop apps → Run workflow** gestartet werden. Die fertigen
+ZIP-Dateien stehen danach als zwei Artifacts zum Download bereit.
+
 ---
 
 ## 📂 Projektstruktur / _Project Structure_

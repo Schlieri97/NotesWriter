@@ -227,6 +227,18 @@ class KeyboardAndExportTest {
     }
 
     @Test
+    void programVersionIsVisibleAndDoesNotChangeForNewImages() throws Exception {
+        onFx(() -> {
+            Label version = (Label) root.lookup("#versionLabel");
+            assertEquals("Version " + AppInfo.VERSION, version.getText());
+            tap(KeyCode.D);
+            assertEquals("Version " + AppInfo.VERSION, version.getText());
+            tap(KeyCode.E);
+            assertEquals("Version " + AppInfo.VERSION, version.getText());
+        });
+    }
+
+    @Test
     void pauseHitAreaSelectsOutsideStrokeAndFollowsItsPosition() throws Exception {
         onFx(() -> {
             tap(KeyCode.D);
@@ -284,7 +296,7 @@ class KeyboardAndExportTest {
                 Text text = (Text) overlay.getChildren().stream()
                         .filter(Text.class::isInstance).findFirst().orElseThrow();
                 mouseClick(text);
-                assertEquals(Color.web("#1976D2"), text.getFill());
+                assertEquals(Color.web("#C62828"), text.getFill());
                 tap(key);
                 assertFalse(overlay.getChildren().contains(text));
                 assertEquals(List.of("D|NORMAL"), tokens(controller.Gridpane1));
@@ -338,8 +350,8 @@ class KeyboardAndExportTest {
                     MouseButton.PRIMARY, 1, false, false, false, false,
                     false, false, false, false, false, true,
                     new PickResult(page, maxX, maxY)));
-            assertEquals(Color.web("#1976D2"), texts.get(0).getFill());
-            assertEquals(Color.web("#1976D2"), texts.get(1).getFill());
+                assertEquals(Color.web("#C62828"), texts.get(0).getFill());
+                assertEquals(Color.web("#C62828"), texts.get(1).getFill());
             tap(KeyCode.DELETE);
             assertTrue(overlay.getChildren().stream().noneMatch(Text.class::isInstance));
             tap(KeyCode.Z, false, true, false);
