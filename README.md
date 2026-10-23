@@ -138,10 +138,10 @@ _Or in **IntelliJ IDEA**:_
 
 ### **3. Desktop-Builds über GitHub Actions** / _Build desktop apps on GitHub_
 
-Der Workflow `.github/workflows/build.yml` baut automatisch für Windows und
-macOS. Er kann nach einem Push auf `main`/`master` oder manuell unter
-**Actions → Build desktop apps → Run workflow** gestartet werden. Die fertigen
-ZIP-Dateien stehen danach als zwei Artifacts zum Download bereit.
+Der Workflow `.github/workflows/build.yml` baut die Windows-App. Für macOS
+startest du `.github/workflows/build-macos.yml` unter **Actions → Mac-App bauen
+→ Run workflow**. Beide Workflows stellen die fertigen Pakete als GitHub-
+Artifacts zum Download bereit.
 
 ---
 

@@ -15,8 +15,6 @@ jobs:
         include:
           - os: windows-latest
             platform: win64
-          - os: macos-latest
-            platform: macos
 
     steps:
       - name: Check out source
