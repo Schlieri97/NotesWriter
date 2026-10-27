@@ -1,16 +1,13 @@
-# 🎵 NotesWriter   
+# 🎵 SZ-Notenschreiber
 
 **NotesWriter** ist eine JavaFX-Anwendung zur grafischen Darstellung und Verwaltung von Ces-Querflöten-Grifftabellen.  
 Das Programm erlaubt das Zeichnen, Speichern, Laden und Drucken von Notenseiten mit Griffbildern.  
 
-_**NotesWriter** is a JavaFX application for visualizing and managing fingering charts for the transverse flute._
-_The program allows you to draw, save, load, and print note pages with fingering diagrams._
-
 ---
 
-## Flöte per Mikrofon eingeben
+## Notenmikrofon
 
-Im Bereich **Noten einfügen → Flöte per Mikrofon eingeben** das Mikrofon und
+Im Bereich **Noten einfügen → Notenmikrofon** das Mikrofon und
 das Instrument wählen, danach **Mikrofon starten** drücken.
 Voreingestellt ist **Ces-Querflöte (Halbton tiefer)**: Zur gehörten Tonhöhe wird
 ein Halbton addiert, um den notierten Ton zu erhalten. Zusätzlich stehen C-Querflöte,
@@ -58,70 +55,36 @@ gewählt, da sich verschiedene Griffe derselben Tonhöhe akustisch nicht untersc
 
 ---
 
-## 🚀 Funktionen / _Features_
+## 🚀 Funktionen
 
-- 🎶 **Interaktive Notenanzeige:** / _**Interactive Note Display:**_
-  - Darstellung der Griffe für verschiedene Töne (inklusive Oktav-Noten).
-  - _Shows fingering diagrams for different tones (including octave notes)._
-
-- 🧩 **Zwei Seiten („Links“ & „Rechts“):** / _**Two Pages ("Left" & "Right"):**_
-  - Umschalten zwischen zwei Notenseiten innerhalb des Programms.
-  - _Switch between two separate note pages within the program._
-
-- 💾 **Speichern & Laden:** / _**Save & Load:**_
-  - Exportiere deine Noten in eine Textdatei und lade sie später wieder.  
-  - „Alle Noten überladen“ → ersetzt die vorhandenen Noten
-  - „Noten hinzufügen“ → fügt neue Noten an die bestehenden an
-    
-  - _Export your notes to a text file and load them later._
-  - _“Overwrite all notes” → replaces existing ones_
-  - _“Add notes” → appends new notes to the existing list_
-
-- 🖨️ **Drucken:** / _**Printing:**_
-  - Druckt die komplette Notenseite (A4-Querformat)._
-  - Wahlweise freie Felder mit „Cis/Des“ auffüllen oder Leerstellen beibehalten.
-  - Bewusst eingefügte leere Notenblöcke bleiben in beiden Varianten frei.
-  
-  - _Prints the complete note page (A4 landscape).
-  - _Choose whether to fill unused slots with “C#/Db” or preserve empty spaces. Explicit blank blocks stay empty._
-
-- 🧹 **Löschen:** / _**Delete:**_
-  - Entferne markierte Noten über das Kontextmenü oder mit Entf/Backspace.
-  - Entf/Backspace löscht zuerst markierte Noten, leere Notenblöcke, Pausenstriche oder Wiederholungszeichen; ohne Auswahl die letzte Eingabe.
-  - Markierter Freitext lässt sich ebenfalls mit Entf/Backspace löschen. Escape hebt jede Markierung auf.
-  - _Delete selected elements with Backspace/Delete or the context menu._
-
-- 🪶 **Design:**
-  - JavaFX-Buttons mit Icons
-  - Farbliche Seitenanzeige (Blau = linke Seite, Rot = rechte Seite)
-  - Abgerundete, stilisierte Bedienelemente
-
-  - _JavaFX buttons with icons_ 
-  - _Colored page indication (blue = left page, red = right page)_
-  - _Rounded, stylized controls_
+- Griffbilder für verschiedene Töne und Oktavvarianten anzeigen.
+- Zwei getrennte Notenseiten bearbeiten.
+- Noten speichern, laden, drucken und als PDF ausgeben.
+- Noten, Pausen, Wiederholungszeichen und Leerblöcke per Drag-and-Drop verschieben.
+- Mehrere Elemente mit einem Auswahlrahmen markieren und gemeinsam verschieben.
+- Bögen über eine Notenauswahl einfügen, verschieben und löschen.
+- Freitext einfügen, Schriftgröße ändern und Elemente löschen.
+- Bearbeitungsschritte rückgängig machen und wiederherstellen.
+- Optional gespielte Töne über das Notenmikrofon erkennen.
 
 ---
 
-## 🛠️ Voraussetzungen / _Requirements_
+## 🛠️ Voraussetzungen
 
-- Java **17** oder neuer
-- JavaFX (z. B. über [OpenJFX](https://openjfx.io/))
-- Maven oder IntelliJ IDEA (Projekt basiert auf `pom.xml`)
-  
-- _Java **17** or newer_
-- _JavaFX (e.g., via [OpenJFX](https://openjfx.io/))_
-- _Maven or IntelliJ IDEA (project based on `pom.xml`)_
+- JDK **22**
+- JavaFX 22.0.1 (über Maven)
+- Maven oder IntelliJ IDEA
 
 ---
 
-## ▶️ Starten / How to Run
-### **1. Repository klonen** / _Clone the repository_
+## ▶️ Starten
+### **1. Repository klonen**
 ```bash
 git clone https://github.com/Schlieri97/NotesWriter.git
 cd NotesWriter
 ```
 
-### **2. Starten mit Maven** / _Run with Maven_
+### **2. Starten mit Maven**
 ```bash
 mvn clean javafx:run
 ```
@@ -131,12 +94,7 @@ Oder in **IntelliJ IDEA**:
 2. Stelle sicher, dass „JavaFX“ korrekt eingebunden ist.
 3. Starte die `Main`-Klasse.
    
-_Or in **IntelliJ IDEA**:_
-1. _Open the project directory._
-2. _Make sure JavaFX is properly configured._
-3. _Run the `Main` class._
-
-### **3. Desktop-Builds über GitHub Actions** / _Build desktop apps on GitHub_
+### **3. Desktop-Builds über GitHub Actions**
 
 Der Workflow `.github/workflows/build.yml` baut die Windows-App. Für macOS
 startest du `.github/workflows/build-macos.yml` unter **Actions → Mac-App bauen
@@ -145,44 +103,53 @@ Artifacts zum Download bereit.
 
 ---
 
-## 📂 Projektstruktur / _Project Structure_
+## 📂 Projektstruktur
 
 ```
 NotesWriter/
- ├── src/
- │   ├── main/
- │   │   ├── java/com/code/noteswriter/
- │   │   │   ├── Controller.java
- │   │   │   ├── Model.java
- │   │   │   └── Main.java
- │   │   └── resources/com/code/noteswriter/Bilder/
- │   │       ├── D.jpg
- │   │       ├── Cis_Des.jpg
- │   │       └── ...
- │   └── test/
+ ├── .github/workflows/       # Windows- und macOS-Builds
+ ├── docs/                    # macOS-Hinweise und Screenshot
+ ├── scripts/                 # macOS-Buildskript
+ ├── src/main/java/           # JavaFX-Anwendung
+ ├── src/main/resources/      # FXML-Oberfläche, Griffbilder und Logo
+ ├── src/main/test/            # bestehende zusätzliche Testquelle
+ ├── src/test/java/            # Maven-/JUnit-Tests
  ├── pom.xml
  ├── mvnw, mvnw.cmd
- └── .gitignore
+ └── README.md
 ```
 
 ---
 
-## 💾 Dateiformat / _File Format_  
+## 💾 Dateiformat
 
-Beim Speichern entsteht eine Textdatei mit folgendem Aufbau:  
-_When saving, a text file is created with the following format:_
+Beim Speichern entsteht eine frei benennbare Textdatei. Jede Zeile besteht aus
+einem Seitenbezeichner und einem semikolongetrennten Inhalt. Noten werden als
+`TON|VARIANTE` gespeichert; mögliche Varianten sind `NORMAL`, `OKTAV`, `LANG`,
+`KURZ`, `FESTE`, `OKTAV_LANG` und `OKTAV_KURZ`.
 
 ```
-Seite1;C
-Seite1;D
-Seite2;E
+Kreis1;<Base64-Text>
+Kreis1Groesse;18
+Seite1;D|NORMAL
+Seite1;F|OKTAV
+Seite1;PAUSENSTRICH
+Seite1;WIEDERHOLUNG|ANFANG
+Seite1;LEERBLOCK|SIZE|20
+Seite1;PAUSE_FREI|120.0|80.0
+Seite1;TEXT|<Base64-Text>|160.0|90.0|18
+Seite1;BOGEN|2,1;3,1;4,1
 ```
-Jede Zeile steht für eine Note und die zugehörige Seite.  
-_Each line represents a note and its corresponding page._
+
+Gespeichert werden außerdem die vier Seitentexte (`Kreis1`, `Marsch1`,
+`Kreis2`, `Marsch2`) und ihre Schriftgrößen. Ein Standard-Leerblock wird als
+`LEERBLOCK` geschrieben; die Größenangabe ist optional. Alte Dateien mit
+`LEERBLOCK|<Zahl>` bleiben lesbar. Beim Laden kann eine Datei überschrieben
+oder zu den vorhandenen Inhalten hinzugefügt werden.
 
 ---
 
-## 🧠 Hinweise zur Bedienung / _Usage Tips_
+## 🧠 Hinweise zur Bedienung
 
 - Klick auf Note → fügt Notenbild in die aktuelle Seite ein
 - Note per Drag-and-Drop auf eine Seite ziehen → an der Zeigerposition einfügen, auch zwischen vorhandenen Noten
@@ -190,6 +157,8 @@ _Each line represents a note and its corresponding page._
 - „Tastenkürzel & Tonvarianten“ → Details bei Bedarf aufklappen
 - **„Linke Seite“ / „Rechte Seite“** → wählt die gewünschte Notenseite aus
 - **„Pausenstrich“** → fügt einen waagerechten Pausenstrich ein
+- **Bogen** → mindestens zwei Noten markieren, rechtsklicken und „Bogen über Auswahl“ wählen; ein vorhandener Bogen lässt sich per Rechtsklick löschen
+- **Pausenstrich frei platzieren** → Pausenstrich rechtsklicken, die freie Platzierung wählen und anschließend beliebig auf der Seite positionieren
 - **↶ Rückgängig / ↷ Wiederherstellen** → Bearbeitungsschritte zurücknehmen oder erneut ausführen; auch mit **Strg+Z** und **Strg+Umschalt+Z**
 - **„Leerer Notenblock“ / Enter** → fügt standardmäßig einen freien Block mit 41 Notenplätzen ein; der freie Block ist im Editor beschriftet, die Beschriftung erscheint nicht im Druck/PDF
 - **Leerblock anpassen** → direkt am Block mit **− / +** jeweils einen Notenplatz entfernen oder hinzufügen; per Rechtsklick stehen Schnellgrößen (1, 10, 20, 30, 41) und eine freie Eingabe bereit. Wenn die Größe nicht mehr in die aktuelle Zeile passt, beginnt der Block geschlossen in der nächsten Zeile. Ziehen an der linken oder rechten Kante bleibt für die Feinsteuerung möglich; in der Mitte ziehen verschiebt den Block und rastet am Notenraster ein
@@ -197,12 +166,6 @@ _Each line represents a note and its corresponding page._
 - **Freitext** → nach dem Einfügen per Rechtsklick die Schriftgröße wählen oder eine eigene Größe zwischen 8 und 72 pt eingeben
 - **Backspace / Entf** → löscht die letzte Eingabe der aktiven Seite; ein zuletzt eingefügter Leerblock wird als Ganzes entfernt
 - **„Drucken / PDF exportieren“** → wahlweise mit Cis/Des auffüllen oder Leerstellen beibehalten; für PDF einen PDF-Drucker auswählen
-
-- _Click a note → adds the fingering image to the current page_
-- _**"Switch Page"** → toggles between left and right page_
-- _**"W-Open"** → inserts dividing lines_
-- _**Backspace / Delete** → delete the selection, or the last entry when nothing is selected_
-- _**"Print / export PDF"** → choose whether to fill unused slots; select a PDF printer to export PDF_
 
 ### Tastatur
 
@@ -228,16 +191,84 @@ Ein gehaltener Ton wird nicht wiederholt eingefügt. Die Tasten stehen auch in d
 
 Beispiel: **D** schreibt D, **Strg+D** ein langes D und **Alt+Umschalt+D** ein kurzes Oktav-D.
 Nicht verfügbare Oktav-Varianten werden mit einem Hinweis abgewiesen.
-Ein Standard-Leerblock wird als `Seite1;LEERBLOCK` bzw. `Seite2;LEERBLOCK` gespeichert. Eine angepasste Größe steht als `LEERBLOCK|SIZE|N` in der Datei.
 
 ---
 
-## 🖼️ Screenshots  
-<img width="1811" height="981" alt="grafik" src="https://github.com/user-attachments/assets/fd59f518-c5dd-46cd-b215-36a423164035" />
+## 🖼️ Screenshot
+
+![Übersicht des SZ-Notenschreibers](docs/noteswriter-overview.jpg)
 
 ---
 
-## 👨‍💻 Author  
+## 👨‍💻 Autor
 
 **Schlieri97**  
-📧 [View GitHub Profile](https://github.com/Schlieri97)  
+📧 [GitHub-Profil](https://github.com/Schlieri97)
+
+---
+
+## English version
+
+# 🎵 SZ-Notenschreiber
+
+SZ-Notenschreiber is a JavaFX application for creating, editing, saving and printing fingering-chart pages for the Ces transverse flute. Notes, rests, repeat signs, slurs, empty blocks and text can be placed directly on the page.
+
+![SZ-Notenschreiber overview](docs/noteswriter-overview.jpg)
+
+## Features
+
+- Fingering charts for notes and octave variants
+- Two editable music pages
+- Drag and drop for notes, rests, repeat signs and empty blocks
+- Rectangle selection for moving multiple elements
+- Save, load, undo, redo, print and PDF export
+- Optional microphone input for recognizing played notes
+
+## Requirements
+
+- JDK 22
+- Maven or the Maven Wrapper
+- JavaFX 22.0.1
+
+## Run
+
+```bash
+git clone https://github.com/Schlieri97/NotesWriter.git
+cd NotesWriter
+mvn clean javafx:run
+```
+
+You can also open the project in IntelliJ IDEA and run `com.code.noteswriter.Main`.
+
+## Build desktop packages
+
+Run **Actions → Build desktop apps** for Windows or **Actions → Mac-App bauen** for macOS. The packages include their own Java runtime, so Java is not required on the target computer. macOS provides separate DMG artifacts for Apple Silicon and Intel Macs.
+
+## Usage
+
+Click or drag notes onto the page, drag elements to move them, or draw a selection rectangle for multiple elements. Repeat signs snap to the note grid. Backspace/Delete removes the selection, Escape clears selections, and Ctrl+Z / Ctrl+Shift+Z undo and redo.
+
+## File format
+
+Saved documents are user-named plain-text files. Each line contains a page key
+and a semicolon-separated value. Notes use `NOTE|VARIANT`-style tokens such as
+`D|NORMAL` or `F|OKTAV`; page headings,
+repeat signs, rests, empty blocks, free text and slurs are stored as well. For
+example:
+
+```text
+Kreis1;<Base64 text>
+Kreis1Groesse;18
+Seite1;D|NORMAL
+Seite1;F|OKTAV
+Seite1;PAUSENSTRICH
+Seite1;WIEDERHOLUNG|ANFANG
+Seite1;LEERBLOCK|SIZE|20
+Seite1;PAUSE_FREI|120.0|80.0
+Seite1;TEXT|<Base64 text>|160.0|90.0|18
+Seite1;BOGEN|2,1;3,1;4,1
+```
+
+## Author
+
+**Schlieri97** — [GitHub profile](https://github.com/Schlieri97)
