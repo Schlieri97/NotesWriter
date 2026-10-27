@@ -1,5 +1,9 @@
 # 🎵 SZ-Notenschreiber
 
+## Video
+
+![](https://github.com/user-attachments/assets/9d980379-5ff9-4c12-b3c6-ab471a30ced9)
+
 **NotesWriter** ist eine JavaFX-Anwendung zur grafischen Darstellung und Verwaltung von Ces-Querflöten-Grifftabellen.  
 Das Programm erlaubt das Zeichnen, Speichern, Laden und Drucken von Notenseiten mit Griffbildern.  
 
@@ -212,8 +216,6 @@ Nicht verfügbare Oktav-Varianten werden mit einem Hinweis abgewiesen.
 # 🎵 SZ-Notenschreiber
 
 SZ-Notenschreiber is a JavaFX application for creating, editing, saving and printing fingering-chart pages for the Ces transverse flute. Notes, rests, repeat signs, slurs, empty blocks and text can be placed directly on the page.
-
-![SZ-Notenschreiber overview](docs/noteswriter-overview.jpg)
 
 ## Features
 
